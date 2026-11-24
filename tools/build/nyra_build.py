@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.5"
+BUILDER_VERSION = "1.0.6"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
 #: Local, git-ignored record of the interpreter this workspace should build with.
@@ -701,16 +701,39 @@ def disk_free_gb(path: Path) -> float:
     return usage.free / 1e9
 
 
+#: Where the environment stages put their virtualenvs (used to tell "install" from "verify").
+ENV_MARKERS = {
+    "training": ("04_training/roboparty_train/.venv", "04_training/roboparty_train/.venv-physx"),
+    "motion": ("02_motion_infra/human-humanoid-tools/.venv", "02_motion_infra/PartyMimic/.venv",
+               "02_motion_infra/UFO/.venv", "02_motion_infra/any4hdmi/.venv"),
+}
+
+
+def env_already_installed(ctx: Context, stage_name: str) -> bool:
+    return any((ctx.root / marker).is_dir() for marker in ENV_MARKERS.get(stage_name, ()))
+
+
 def preflight_disk(ctx: Context, stages: list[Stage], min_free_gb: float) -> str | None:
-    """Refuse to start an environment install that cannot fit. Returns a message or None."""
+    """Refuse an environment install that cannot fit — but do not block a verification.
+
+    ``uv sync`` on an existing environment downloads almost nothing, so requiring the
+    full install budget again would block a legitimate `--with-envs` run right after
+    the install.
+    """
     needs = [stage.name for stage in stages if stage.name in ENV_STAGES]
     if not needs:
         return None
+    pending = [name for name in needs if not env_already_installed(ctx, name)]
     free = disk_free_gb(ctx.root)
+    if not pending:
+        return None if free >= 2.0 else (
+            f"{', '.join(needs)} already installed, but only {free:.1f} GB free — "
+            "a verification run needs ~2 GB"
+        )
     if free >= min_free_gb:
         return None
     return (
-        f"refusing to install environments: {', '.join(needs)} needs roughly 15 GB (motion) and "
+        f"refusing to install environments: {', '.join(pending)} needs roughly 15 GB (motion) and "
         f"10 GB (training), but only {free:.1f} GB is free (limit {min_free_gb:.0f} GB). "
         "Free space, lower --min-free-gb, or skip these stages."
     )

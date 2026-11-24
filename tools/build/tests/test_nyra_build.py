@@ -342,6 +342,27 @@ def test_env_install_refuses_when_disk_is_short(ws, capsys, monkeypatch):
     assert not (ws / "06_assets/build/manifest.json").exists()
 
 
+def test_disk_preflight_allows_verifying_an_installed_env(ws, monkeypatch):
+    """Right after a 15 GB install, free space is low — verification must still run."""
+    import shutil as _shutil
+
+    def tight(path):
+        return _shutil._ntuple_diskusage(total=40e9, used=36e9, free=4e9)  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(nyra_build.shutil, "disk_usage", tight)
+    ctx = nyra_build.Context(root=ws, build_dir=ws / "06_assets/build")
+    stages = nyra_build.select_stages(["training"], None)
+    ctx.with_envs = True
+
+    # Not installed yet: 4 GB free is not enough for a ~10 GB install.
+    assert "refusing to install environments" in (nyra_build.preflight_disk(ctx, stages, 12.0) or "")
+
+    # Installed: it is only a verification pass now.
+    (ws / "04_training/roboparty_train/.venv").mkdir(parents=True)
+    assert nyra_build.preflight_disk(ctx, stages, 12.0) is None
+    assert nyra_build.env_already_installed(ctx, "training") is True
+
+
 def test_clean_refuses_to_delete_tracked_files(ws, capsys):
     tracked_dir = ws / "06_evolayer/config"
     assert run_build("--root", str(ws), "clean", "--venvs") == 0
