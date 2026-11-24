@@ -1,6 +1,6 @@
 {
   "name": "nyra-workspace",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Build the Nyra humanoid workspace (ROBOTO ORIGIN / RPO): submodules, roboparty_deploy (colcon), uv environments, compatibility contract and the EvoLayer test suite \u2014 one command, one manifest.",
   "license": "SEE LICENSE IN LICENSE",
   "private": true,

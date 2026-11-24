@@ -252,6 +252,33 @@ def test_second_run_reuses_a_cached_stage(ws, capsys):
     assert _stage_status(ws, "assets") == "ok"
 
 
+def test_fingerprint_changes_when_the_toolchain_changes(ws):
+    """Installing mujoco/pytest must invalidate the cache of the stage that uses them."""
+    ctx = nyra_build.Context(root=ws, build_dir=ws / "06_assets/build")
+    ctx.capabilities = {
+        "pytest": {"available": True}, "numpy": {"available": True},
+        "mujoco": {"available": True}, "onnxruntime": {"available": True},
+        "pyyaml": {"available": True},
+    }
+    stage = nyra_build.STAGE_MAP["evolayer"]
+    with_mujoco = nyra_build.stage_fingerprint(ctx, stage)
+    assert nyra_build.stage_fingerprint(ctx, stage) == with_mujoco  # stable
+
+    ctx.capabilities["mujoco"] = {"available": False}
+    assert nyra_build.stage_fingerprint(ctx, stage) != with_mujoco
+
+    # A different interpreter is a different toolchain too.
+    ctx.capabilities["mujoco"] = {"available": True}
+    import sys as _sys
+
+    original = _sys.executable
+    try:
+        _sys.executable = "/usr/bin/some-other-python"
+        assert nyra_build.stage_fingerprint(ctx, stage) != with_mujoco
+    finally:
+        _sys.executable = original
+
+
 def test_force_ignores_the_cache(ws, capsys):
     assert run_build("--root", str(ws), "build", "--only", "assets") == 0
     assert run_build("--root", str(ws), "build", "--only", "assets") == 0

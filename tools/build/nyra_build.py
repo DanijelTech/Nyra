@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.1"
+BUILDER_VERSION = "1.0.2"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
 
@@ -68,6 +68,9 @@ class Stage:
     optional: bool = False
     #: CLI flag that must be present for this stage to run (heavy/opt-in stages).
     flag: str = ""
+    #: Capabilities whose presence changes the stage's outcome; they are part of the
+    #: fingerprint, so installing mujoco/pytest invalidates the cache.
+    fingerprint_caps: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -96,7 +99,8 @@ STAGES: tuple[Stage, ...] = (
     Stage("training", "uv environment for roboparty_train (~10 GB)", deps=("submodules",),
           caps=("uv", "isaaclab"), optional=True, flag="with_envs"),
     Stage("contract", "module compatibility contract", deps=("submodules", "assets"), caps=("pyyaml",)),
-    Stage("evolayer", "EvoLayer test suite", deps=("submodules",), caps=("pytest",), optional=True),
+    Stage("evolayer", "EvoLayer test suite", deps=("submodules",), caps=("pytest",), optional=True,
+          fingerprint_caps=("pytest", "numpy", "mujoco", "onnxruntime")),
     Stage("manifest", "write the build manifest"),
 )
 STAGE_ORDER = tuple(stage.name for stage in STAGES)
@@ -291,8 +295,22 @@ def git_info(root: Path) -> dict[str, Any]:
 
 
 def stage_fingerprint(ctx: Context, stage: Stage) -> str:
-    """Cheap, honest fingerprint: repo HEADs + skill configs + builder version."""
-    payload: dict[str, Any] = {"builder": BUILDER_VERSION, "stage": stage.name}
+    """Cheap, honest fingerprint: repos, configs, builder version **and toolchain**.
+
+    The toolchain matters: installing mujoco turns a "136 passed, 10 skipped" run
+    into "146 passed". Without the interpreter and capability flags in the
+    fingerprint, a cached result would hide exactly that change.
+    """
+    payload: dict[str, Any] = {
+        "builder": BUILDER_VERSION,
+        "stage": stage.name,
+        "python": sys.executable,
+        "python_version": sys.version.split()[0],
+        "caps": {
+            cap: bool(ctx.capabilities.get(cap, {}).get("available"))
+            for cap in (stage.fingerprint_caps or stage.caps)
+        },
+    }
     for repo in ("00_body_base/roboparty_deploy", "00_body_base/rpo_description",
                  "04_training/roboparty_train", "05_integration", "06_evolayer"):
         path = ctx.root / repo
