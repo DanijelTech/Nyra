@@ -273,6 +273,9 @@ class HermesInterface:
             "fidelity and sensor noise are not the real robot's.",
             "Statistics describe the measured population only; rare failures need more episodes.",
             "A passing gate certifies non-inferiority on the measured metrics, not overall safety.",
+            "Torque peaks are measured with the deploy PD gains only (no gravity feedforward or "
+            "torque observer), so a static pose can sit at a joint's URDF effort limit. Compare "
+            "candidates against this same baseline, not against hardware nominal torques.",
         ]
         caveats.extend(extra_caveats or [])
         for caveat in caveats:

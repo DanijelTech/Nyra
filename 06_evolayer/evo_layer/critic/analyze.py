@@ -9,7 +9,7 @@ Rules
 1. ``fall_rate_regression``   — recent fall rate worse than baseline (Wilson bound + z-test)
 2. ``success_rate_regression``— recent success rate worse (two-proportion z-test)
 3. ``tracking_regression``    — tracking error worse (median + bootstrap CI)
-4. ``torque_instability``     — sustained torque increase (CUSUM changepoint + p95)
+4. ``torque_instability``     — sustained torque increase (split-z changepoint + p95)
 5. ``recovery_weak_spot``     — absolute fall rate above the skill's hard limit
 6. ``headroom_opportunity``   — stable, high success: room to raise the command envelope
 
@@ -293,8 +293,9 @@ class Critic:
                 kind="instability",
                 title=f"Torque peaks shifted upward for {skill}",
                 summary=(
-                    f"CUSUM flagged a change at sample {changepoint}: p95 torque {pre_p95:.1f} N·m -> "
-                    f"{post_p95:.1f} N·m ({ratio:.2f}x). Fatigue and driver saturation risk."
+                    f"Level shift detected at sample {changepoint} (split-z test): p95 torque "
+                    f"{pre_p95:.1f} N·m -> {post_p95:.1f} N·m ({ratio:.2f}x). Fatigue and driver "
+                    "saturation risk."
                 ),
                 metric="torque_peak_nm",
                 baseline_value=pre_p95,
