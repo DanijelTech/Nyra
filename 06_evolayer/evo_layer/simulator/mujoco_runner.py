@@ -28,7 +28,7 @@ import json
 import math
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -68,6 +68,9 @@ class PolicySpec:
     joint_limits: list[float]
     clip_cmd: list[float]
     action_alpha: float = 1.0
+    #: ``usd2urdf[i]`` is the URDF joint index of policy action ``i``. Deploy applies
+    #: it before writing to the motors; ignoring it drives the wrong joints.
+    usd2urdf: list[int] = field(default_factory=list)
 
     @property
     def obs_dim(self) -> int:
@@ -106,6 +109,7 @@ class PolicySpec:
             joint_limits=list(params.get("joint_limits") or []),
             clip_cmd=list(params.get("clip_cmd") or [-1, 1, -1, 1, -1, 1]),
             action_alpha=float(params.get("act_alpha", 1.0)),
+            usd2urdf=[int(v) for v in (params.get("usd2urdf") or [])],
         )
 
 
@@ -313,6 +317,22 @@ class ObservationBuilder:
 # --------------------------------------------------------------------------- policy
 
 
+def action_to_joint_offsets(spec: PolicySpec, action: "np.ndarray") -> "np.ndarray":
+    """Map a policy action vector onto URDF-ordered joint offsets.
+
+    ``roboparty_deploy`` applies ``usd2urdf`` (policy order -> URDF order) before
+    writing to the motors. A rehearsal that skips it drives the wrong joints, so
+    this function is the single place the mapping happens and it is unit-tested.
+    """
+    offsets = np.zeros(len(spec.kp), dtype=np.float64)
+    scaled = np.array(spec.action_scale, dtype=np.float64) * action
+    if spec.usd2urdf and len(spec.usd2urdf) == len(scaled):
+        offsets[np.array(spec.usd2urdf, dtype=int)] = scaled
+    else:
+        offsets[: len(scaled)] = scaled
+    return offsets
+
+
 class OnnxPolicy:
     def __init__(self, path: Path):
         if ort is None:  # pragma: no cover
@@ -437,7 +457,7 @@ def run_episode(
             raw = np.zeros(len(spec.kp))
         action = spec.action_alpha * raw + (1 - spec.action_alpha) * action
         builder.last_action = action.copy()
-        target = np.array(spec.default_angle) + np.array(spec.action_scale) * action
+        target = np.array(spec.default_angle, dtype=np.float64) + action_to_joint_offsets(spec, action)
         if spec.joint_limits:
             # joint_limits is a flat lower/upper sequence in deploy YAML order
             limits = np.array(spec.joint_limits)

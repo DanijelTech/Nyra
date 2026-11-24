@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.3"
+BUILDER_VERSION = "1.0.4"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
 #: Local, git-ignored record of the interpreter this workspace should build with.

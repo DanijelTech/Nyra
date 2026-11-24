@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -61,6 +63,91 @@ def test_extract_counts_rejected_records(tmp_path):
     extracted = from_episodes_jsonl(path, skill="locomotion")
     assert extracted.metrics is not None
     assert "1 rejected" in extracted.notes
+
+
+# --------------------------------------------------------------------------- action mapping
+
+
+def _spec(usd2urdf, scale=0.25, n=3):
+    from evo_layer.simulator.mujoco_runner import PolicySpec
+
+    return PolicySpec(
+        obs_terms=[("dof_pos", n)], frame_stack=1, stack_order="frame_major",
+        decimation=5, dt=0.004, kp=[1.0] * n, kd=[0.1] * n,
+        action_scale=[scale] * n, default_angle=[0.0] * n, joint_limits=[],
+        clip_cmd=[-1, 1, -1, 1, -1, 1], usd2urdf=usd2urdf,
+    )
+
+
+@requires_sim
+def test_action_mapping_follows_usd2urdf():
+    """Deploy scatters policy actions into URDF order; the rehearsal must too."""
+    import numpy as np
+
+    from evo_layer.simulator.mujoco_runner import action_to_joint_offsets
+
+    spec = _spec([1, 0, 2])  # policy action 0 -> urdf joint 1, and vice versa
+    offsets = action_to_joint_offsets(spec, np.array([1.0, 0.0, 0.0]))
+    assert list(offsets) == [0.0, 0.25, 0.0]
+
+    identity = action_to_joint_offsets(_spec([0, 1, 2]), np.array([0.0, 1.0, 0.0]))
+    assert list(identity) == [0.0, 0.25, 0.0]
+
+
+@requires_sim
+def test_action_mapping_without_a_permutation_is_positional():
+    import numpy as np
+
+    from evo_layer.simulator.mujoco_runner import action_to_joint_offsets
+
+    offsets = action_to_joint_offsets(_spec([]), np.array([1.0, 0.0, 0.0]))
+    assert list(offsets) == [0.25, 0.0, 0.0]
+
+
+@requires_sim
+def test_policy_spec_reads_usd2urdf_from_the_deploy_config(real_repo):
+    from evo_layer.simulator.mujoco_runner import PolicySpec
+
+    spec = PolicySpec.from_yaml(
+        real_repo / "00_body_base/roboparty_deploy/src/inference/robots/rpo/configs/default.yaml"
+    )
+    assert len(spec.usd2urdf) == 23
+    assert sorted(spec.usd2urdf) == list(range(23))
+    assert spec.usd2urdf[1] == 6  # policy joint 1 (right_thigh_yaw) -> urdf index 6
+    assert spec.obs_dim == 780
+
+
+@requires_sim
+def test_shipped_policy_stands_in_rehearsal(real_repo, tmp_path):
+    """End-to-end guard: the deployed policy must stand, not collapse.
+
+    This is what caught the missing usd2urdf mapping: without it the shipped
+    policy falls immediately (falls=1, tilt > 1 rad).
+    """
+    import json
+    import subprocess
+
+    out = tmp_path / "episodes.jsonl"
+    deploy = real_repo / "00_body_base/roboparty_deploy/src/inference/robots/rpo"
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "evo_layer.simulator.mujoco_runner",
+            "--mjcf", str(real_repo / "00_body_base/rpo_description/mjcf/rpo.xml"),
+            "--urdf", str(real_repo / "00_body_base/rpo_description/urdf/rpo.urdf"),
+            "--policy-yaml", str(deploy / "configs/default.yaml"),
+            "--policy", str(deploy / "models/policy.onnx"),
+            "--episodes", "1", "--duration", "3", "--command", "0,0,0",
+            "--out", str(out), "--quiet",
+        ],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, result.stderr[-800:]
+    record = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert record["falls"] == 0, record["notes"]
+    assert record["success"] is True
+    tilt = float(record["notes"].split("max_tilt=")[1].split()[0])
+    assert tilt < 0.3, f"policy tilted {tilt} rad — action mapping or observation is wrong"
 
 
 # --------------------------------------------------------------------------- real MuJoCo run

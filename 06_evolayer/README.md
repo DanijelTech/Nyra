@@ -147,7 +147,7 @@ train task. Adding a capability means adding a file, not editing code.
 ## Tests
 
 ```bash
-cd 06_evolayer && python3 -m pytest -q      # 145 tests, ~2 min (includes real MuJoCo runs)
+cd 06_evolayer && python3 -m pytest -q      # 150 tests, ~30 s (includes real MuJoCo runs)
 ```
 
 The suite runs real git, real SQLite, real HTTP servers, real HMAC verification

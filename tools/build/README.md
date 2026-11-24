@@ -41,7 +41,7 @@ Eight stages, wired as a dependency graph. Each stage either **runs**, is
 | 4 | `motion` | `05_integration/scripts/setup_all.sh --motion` | uv | **opt-in**, ≈15 GB |
 | 5 | `training` | `05_integration/scripts/setup_all.sh --train` | uv + `04_training/IsaacLab-3.0.0` | **opt-in**, ≈10 GB |
 | 6 | `contract` | `05_integration/scripts/check_compat.py` (URDF ↔ MJCF ↔ UFO ↔ deploy ↔ train) | pyyaml | the compatibility gate from the workspace README |
-| 7 | `evolayer` | `pytest 06_evolayer/tests` (145 tests) | pytest | `--skip-tests` to omit |
+| 7 | `evolayer` | `pytest 06_evolayer/tests` (150 tests) | pytest | `--skip-tests` to omit |
 | 8 | `manifest` | writes `06_assets/build/manifest.json` + history | — | always last, records itself |
 
 Stages 4 and 5 install Python environments. They are **opt-in** because they are
@@ -129,7 +129,7 @@ the interpreter, `NYRA_ROOT` to pin the workspace.
   pytest + pyyaml for `contract`/`evolayer`.
 * For the EvoLayer **rehearsal** tests: `python3 -m pip install mujoco numpy onnxruntime onnx`
   (or run everything with `NYRA_PYTHON=~/.venvs/nyra/bin/python npm run build`).
-  Without them those 10 tests are reported as skipped, not failed, and the stage
+  Without them those 14 tests are reported as skipped, not failed, and the stage
   reason says so.
 * Node 18+ only for the npm entry point — `python3 tools/build/nyra_build.py …`
   works without Node at all.
