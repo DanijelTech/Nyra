@@ -83,7 +83,8 @@ Nyra/
 │   ├── scripts/                     # setup_all, launch_base, export_policy, retarget_and_train, update_all, check_compat
 │   └── docs/                        # compatibility contract, troubleshooting
 ├── 06_evolayer/                     # EvoLayer (Hermes-Evo): observe → propose → rehearse → gate → Hermes → deploy
-└── 06_assets/                       # generated reports and EvoLayer state — not tracked
+├── tools/build/                     # nyra-build: one command that builds the workspace (npm package)
+└── 06_assets/                       # generated reports, EvoLayer state, build manifests — not tracked
 ```
 
 Layer names match [Party OS](01_roadmap/party-os/README.md), so upstream docs and this layout use
@@ -126,6 +127,30 @@ Python versions differ per module on purpose: deploy/ROS is 3.10 (system), `robo
 hhtools/UFO/P-BFM use their own `uv` environments. Never share one virtualenv across tiers.
 
 ---
+
+## 3b. Build everything with one command
+
+```bash
+npm install            # zero dependencies: nothing is downloaded
+npm run build          # submodules → assets → deploy → contract → tests → manifest
+npm run status         # what the last build did, stage by stage
+npm run doctor         # toolchain, capabilities, modules, EvoLayer self-check
+```
+
+`npm run build` runs every stage this machine supports and **skips the rest with a
+reason** (`deploy` without ROS 2, `training` without Isaac Lab). Python
+environments are opt-in because they download ~25 GB:
+
+```bash
+npm run build:envs     # + motion (~15 GB) and training (~10 GB) environments
+```
+
+The builder checks free disk space first and refuses rather than filling the disk.
+Every run writes `06_assets/build/manifest.json` (git versions, toolchain,
+per-stage status and reason) and appends to `manifest-history.jsonl`. Details and
+all flags: [`tools/build/README.md`](tools/build/README.md).
+
+Without Node: `python3 tools/build/nyra_build.py build` does exactly the same.
 
 ## 4. Setup order
 

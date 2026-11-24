@@ -15,6 +15,7 @@ rather than guesses:
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -108,7 +109,21 @@ class GitRepo:
                 raise GitError(f"path escapes the repository: {path}") from exc
         _run(self.toplevel, "add", "--", *paths)
 
+    def _require_identity(self) -> None:
+        """A commit without an author is an incident; say how to fix it instead."""
+        email = _run(self.toplevel, "config", "user.email", check=False).stdout.strip()
+        name = _run(self.toplevel, "config", "user.name", check=False).stdout.strip()
+        env_email = os.environ.get("GIT_AUTHOR_EMAIL") or os.environ.get("GIT_COMMITTER_EMAIL")
+        env_name = os.environ.get("GIT_AUTHOR_NAME") or os.environ.get("GIT_COMMITTER_NAME")
+        if not ((email and name) or (env_email and env_name)):
+            raise GitError(
+                "git identity is not configured for this repository: set user.name and user.email "
+                "(git config user.name 'Your Name' && git config user.email you@example.com) "
+                "or export GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL and GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL"
+            )
+
     def commit(self, paths: list[str], message: str) -> Commit:
+        self._require_identity()
         if self.branch in PROTECTED_BRANCHES:
             raise GitError(
                 f"refusing to commit on {self.branch!r}; create an {BRANCH_PREFIX}/… branch first"

@@ -19,6 +19,14 @@ from evo_layer.proposer.templates import TemplateUnavailable
 from conftest import make_episodes, write_jsonl
 
 
+@pytest.fixture(autouse=True)
+def git_identity(monkeypatch):
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "EvoLayer Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@evolayer.invalid")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "EvoLayer Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@evolayer.invalid")
+
+
 def _finding(**overrides) -> Finding:
     base = dict(
         id="fnd_e2e0000001", skill="locomotion", kind="instability", severity="medium",

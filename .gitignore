@@ -19,3 +19,9 @@ env.sh
 
 # EvoLayer runtime state (episodes, audit chain, snapshots, rehearsal artifacts)
 06_assets/evolayer/
+
+# nyra-build outputs (manifest, logs, per-run artefacts)
+06_assets/build/
+
+# npm pack output
+*.tgz

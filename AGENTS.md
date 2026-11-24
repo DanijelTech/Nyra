@@ -48,6 +48,14 @@ no shell, allowlisted paths, verified snapshots, hash-chained audit) are covered
 - Licences are mixed, and three modules are **CC BY-NC 4.0 (non-commercial)**: UFO, I-BFM-Code,
   P-BFM. Deploy is GPL-3.0. See README §11 before proposing anything commercial.
 
+## Build
+
+`npm run build` (or `python3 tools/build/nyra_build.py build`) is the single build
+entry point: submodules → assets → deploy (colcon) → contract → EvoLayer tests →
+manifest. `motion`/`training` env installs are **opt-in** (`--with-envs`, ~25 GB)
+and guarded by a disk preflight. Never run env installs on a 25 GB disk without
+`--skip`ping what you do not need. Manifest: `06_assets/build/manifest.json`.
+
 ## Commands
 
 ```bash

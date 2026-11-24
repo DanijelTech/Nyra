@@ -15,6 +15,15 @@ from evo_layer.versioning.repo import GitError, GitRepo, sanitise_branch_compone
 from evo_layer.versioning.snapshot import SnapshotError, Snapshotter
 
 
+@pytest.fixture(autouse=True)
+def git_identity(monkeypatch):
+    """A git identity is environment configuration, not something the code invents."""
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "EvoLayer Test")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "test@evolayer.invalid")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "EvoLayer Test")
+    monkeypatch.setenv("GIT_COMMITTER_EMAIL", "test@evolayer.invalid")
+
+
 @pytest.fixture
 def repo(tmp_path) -> GitRepo:
     path = tmp_path / "repo"
