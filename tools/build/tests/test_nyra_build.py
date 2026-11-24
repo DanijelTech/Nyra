@@ -461,6 +461,10 @@ def test_find_root_refuses_a_non_workspace(tmp_path):
 
 def test_package_json_matches_the_builder():
     package = json.loads((REPO_ROOT / "package.json").read_text(encoding="utf-8"))
+    assert package["version"] == nyra_build.BUILDER_VERSION, (
+        "package.json version and BUILDER_VERSION must match (the manifest and the "
+        "tarball both quote them)"
+    )
     assert package["bin"]["nyra-build"] == "tools/build/cli.js"
     assert (REPO_ROOT / package["bin"]["nyra-build"]).is_file()
     # A build tool for a robot must not pull a dependency tree.
