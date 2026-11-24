@@ -16,7 +16,7 @@ from evo_layer.hermes_interface.interface import HermesError
 from evo_layer.models import Finding
 from evo_layer.proposer.templates import TemplateUnavailable
 
-from conftest import make_episodes, write_jsonl
+from conftest import make_episodes, requires_sim, write_jsonl
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,8 @@ def bootstrap(loop, workspace, *, episodes: int = 40) -> None:
     loop.observe("locomotion", str(path))
 
 
-def test_full_cycle_deploy_and_rollback(workspace, loop):
+@requires_sim
+def test_full_cycle_deploy_and_rollback(workspace, loop, zero_policy):
     cfg = workspace["cfg"]
     deploy_config = (
         workspace["deploy"] / "src/inference/robots/rpo/configs/amp.yaml"
@@ -63,7 +64,7 @@ def test_full_cycle_deploy_and_rollback(workspace, loop):
     assert proposal.risk.risk_class in ("medium", "high")
 
     # 2. rehearse (real MuJoCo, candidate policy supplied explicitly)
-    sim = loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(workspace["policy"]))
+    sim = loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(zero_policy))
     assert sim.status == "ok", sim.error
     assert sim.metrics is not None and sim.metrics.n >= 1
 
@@ -112,11 +113,12 @@ def test_full_cycle_deploy_and_rollback(workspace, loop):
     assert chain_ok is True
 
 
-def test_rejection_blocks_deployment(workspace, loop):
+@requires_sim
+def test_rejection_blocks_deployment(workspace, loop, zero_policy):
     bootstrap(loop, workspace)
     loop.store.add_finding(_finding())
     proposal, _ = loop.propose_for_finding("fnd_e2e0000001")
-    loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(workspace["policy"]))
+    loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(zero_policy))
     loop.gate_proposal(proposal.id)
     loop.request_approval(proposal.id)
 
@@ -127,11 +129,12 @@ def test_rejection_blocks_deployment(workspace, loop):
         loop.deploy(proposal.id)
 
 
-def test_modify_creates_a_new_validated_revision(workspace, loop):
+@requires_sim
+def test_modify_creates_a_new_validated_revision(workspace, loop, zero_policy):
     bootstrap(loop, workspace)
     loop.store.add_finding(_finding())
     proposal, _ = loop.propose_for_finding("fnd_e2e0000001")
-    loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(workspace["policy"]))
+    loop.simulate(proposal.id, backend="mujoco", policy_onnx=str(zero_policy))
     loop.gate_proposal(proposal.id)
     loop.request_approval(proposal.id)
 

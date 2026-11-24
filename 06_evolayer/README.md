@@ -137,6 +137,9 @@ train task. Adding a capability means adding a file, not editing code.
 
 * Python 3.10+ (the integration layer is stdlib + PyYAML).
 * `mujoco`, `numpy`, `onnxruntime` for GPU-free rehearsal (`pip install mujoco numpy onnxruntime`).
+  The rehearsal tests **skip** (never fail) when these are missing; the rest of the
+  suite runs everywhere. Install them into the interpreter that runs the builder —
+  the simulator backend now uses `sys.executable` for that reason.
 * Optional: `imageio` + a GL backend (`MUJOCO_GL=egl` or `osmesa`) for video artifacts.
 * Optional: `onnx` for the deeper ONNX checks in `evolayer doctor`/`export` paths.
 * For training-style proposals: the `roboparty_train` environment (see the workspace README).

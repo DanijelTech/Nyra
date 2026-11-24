@@ -10,7 +10,7 @@ from evo_layer.models import Edit, Proposal, Risk, SimPlan
 from evo_layer.simulator.metrics import extract, from_episodes_jsonl
 from evo_layer.simulator.runner import RunnerOptions, _requires_candidate_policy
 
-from conftest import make_episodes, write_jsonl
+from conftest import make_episodes, requires_sim, write_jsonl
 
 
 def proposal(*, kind: str = "eval_suite_expand", episodes: int = 3, command: list[str] | None = None,
@@ -66,15 +66,10 @@ def test_extract_counts_rejected_records(tmp_path):
 # --------------------------------------------------------------------------- real MuJoCo run
 
 
-@pytest.fixture
-def rehearsal(workspace, loop):
-    """Run one real MuJoCo rehearsal through the Runner."""
-    return workspace, loop
-
-
-def test_mujoco_rehearsal_measures_episodes(workspace, loop):
+@requires_sim
+def test_mujoco_rehearsal_measures_episodes(workspace, loop, zero_policy):
     prop = proposal(kind="deploy_config_tune", episodes=3,
-                    params={"policy_onnx": str(workspace["policy"])})
+                    params={"policy_onnx": str(zero_policy)})
     result = loop.runner.run(prop, applied={})
     assert result.status == "ok", result.error
     assert result.metrics is not None
@@ -88,9 +83,10 @@ def test_mujoco_rehearsal_measures_episodes(workspace, loop):
     assert len(episodes_file.sha256) == 64
 
 
-def test_mujoco_runner_writes_ratios_per_episode(workspace, loop):
+@requires_sim
+def test_mujoco_runner_writes_ratios_per_episode(workspace, loop, zero_policy):
     prop = proposal(kind="deploy_config_tune", episodes=2,
-                    params={"policy_onnx": str(workspace["policy"])})
+                    params={"policy_onnx": str(zero_policy)})
     result = loop.runner.run(prop, applied={})
     assert result.status == "ok", result.error
     path = next(a.path for a in result.artifacts if a.name == "episodes.jsonl")
@@ -104,6 +100,7 @@ def test_mujoco_runner_writes_ratios_per_episode(workspace, loop):
         assert record["source"] == "sim"
 
 
+@requires_sim
 def test_runner_refuses_a_policy_change_without_a_candidate(workspace, loop):
     prop = proposal(kind="reward_term_weight", episodes=2)
     result = loop.runner.run(prop, applied={})
@@ -112,9 +109,10 @@ def test_runner_refuses_a_policy_change_without_a_candidate(workspace, loop):
     assert _requires_candidate_policy(prop) is True
 
 
-def test_runner_dry_run_only_prints_the_command(workspace, loop):
+@requires_sim
+def test_runner_dry_run_only_prints_the_command(workspace, loop, zero_policy):
     prop = proposal(kind="deploy_config_tune", episodes=2,
-                    params={"policy_onnx": str(workspace["policy"])})
+                    params={"policy_onnx": str(zero_policy)})
     result = loop.runner.run(prop, applied={}, options=RunnerOptions(dry_run=True))
     assert result.status == "ok"
     assert result.error.startswith("dry run")
@@ -122,16 +120,34 @@ def test_runner_dry_run_only_prints_the_command(workspace, loop):
     assert result.metrics is None
 
 
-def test_runner_rejects_shell_metacharacters(workspace, loop):
+def test_execution_guard_rejects_shell_fragments():
+    """The guard lives in `execution.check_argv`; test it where it lives."""
+    from evo_layer.execution import CommandRejected, check_argv
+
+    assert check_argv(["python3", "-m", "evo_layer"]) == ["python3", "-m", "evo_layer"]
+    for hostile in (
+        ["python3", "-c", "print(1); rm -rf /"],
+        ["python3", "-c", "$(curl evil)"],
+        ["python3", "-c", "a && b"],
+        ["python3", "-c", "`id`"],
+        ["rm", "-rf", "/"],
+        ["/bin/sh", "-c", "echo hi"],
+    ):
+        with pytest.raises(CommandRejected):
+            check_argv(hostile)
+
+
+@requires_sim
+def test_runner_uses_the_guarded_runner(workspace, loop, zero_policy):
+    """A rehearsal that runs at all proves the argv passed the guard."""
     prop = proposal(kind="deploy_config_tune", episodes=1,
-                    params={"policy_onnx": str(workspace["policy"]), "commands": [[0.0, 0.0, 0.0]]})
-    prop.sim_plan.params["commands"] = [[0.0, 0.0, 0.0]]
-    # Inject a hostile episode count through the plan and expect the guard to refuse it.
-    prop.sim_plan.episodes = 1
+                    params={"policy_onnx": str(zero_policy)})
     result = loop.runner.run(prop, applied={})
-    assert result.status in ("ok", "failed")
+    assert result.status == "ok", result.error
+    assert all(isinstance(part, str) for part in result.command)
 
 
+@requires_sim
 def test_fixture_backend_replay_does_not_certify(workspace, loop):
     prop = proposal(kind="deploy_config_tune", episodes=5)
     prop.sim_plan.backend = "fixture"
@@ -144,13 +160,19 @@ def test_fixture_backend_replay_does_not_certify(workspace, loop):
     assert allowed.metrics is not None
 
 
-def test_mujoco_backend_is_available(workspace, loop):
+def test_backend_availability_is_reported_truthfully(workspace, loop):
+    import importlib.util
+
     report = {row["backend"]: row for row in loop.runner.available_backends()}
-    assert report["mujoco"]["available"] is True
+    has_mujoco = all(
+        importlib.util.find_spec(module) is not None for module in ("mujoco", "onnxruntime", "numpy")
+    )
+    assert report["mujoco"]["available"] is has_mujoco
     assert report["isaaclab"]["available"] is False
     assert "training environment" in report["isaaclab"]["detail"]
 
 
+@requires_sim
 def test_failed_process_is_reported_as_failed(workspace, loop):
     prop = proposal(kind="deploy_config_tune", episodes=1,
                     params={"policy_onnx": str(workspace["root"] / "missing.onnx")})

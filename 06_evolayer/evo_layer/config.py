@@ -237,7 +237,8 @@ DEFAULT_BACKENDS: dict[str, dict[str, Any]] = {
     "mujoco": {
         "kind": "mujoco",
         "cwd": "06_evolayer",
-        "python": "python3",
+        # empty = the interpreter running the builder (where mujoco/onnxruntime live)
+        "python": "",
         "mjcf": "00_body_base/rpo_description/mjcf/rpo.xml",
         "urdf": "00_body_base/rpo_description/urdf/rpo.urdf",
         "duration_s": 8.0,

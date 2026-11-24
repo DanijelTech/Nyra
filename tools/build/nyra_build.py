@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.0"
+BUILDER_VERSION = "1.0.1"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
 
@@ -205,7 +205,13 @@ def detect_capabilities(ctx: Context) -> dict[str, dict[str, Any]]:
     for name in ("git", "uv", "colcon", "ros2", "node", "npm", "ffmpeg"):
         path = which(name)
         caps[name] = {"available": bool(path), "detail": path or f"{name} not found on PATH"}
-    for capability, module in (("pyyaml", "yaml"), ("pytest", "pytest")):
+    for capability, module in (
+        ("pyyaml", "yaml"),
+        ("pytest", "pytest"),
+        ("numpy", "numpy"),
+        ("mujoco", "mujoco"),
+        ("onnxruntime", "onnxruntime"),
+    ):
         caps[capability] = probe_import(module, sys.executable)
     isaac = ctx.root / "04_training/IsaacLab-3.0.0"
     caps["isaaclab"] = {
@@ -464,12 +470,20 @@ def stage_evolayer(ctx: Context) -> StageResult:
     tests = ctx.evolayer / "tests"
     if not tests.is_dir():
         return StageResult("evolayer", SKIPPED, "06_evolayer/tests not present")
-    argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tests)]
+    argv = [
+        sys.executable, "-m", "pytest", "-o", "addopts=", "-q", "-p", "no:cacheprovider", str(tests)
+    ]
     ok, code, tail = run(ctx, argv, cwd=ctx.evolayer, timeout=2400)
     result = StageResult("evolayer", OK if ok else FAILED)
     result.commands.append(argv)
+    missing_sim = ctx.missing(("numpy", "mujoco", "onnxruntime"))
+    note = (
+        f" — rehearsal tests skipped ({', '.join(missing_sim)} missing: "
+        "python3 -m pip install mujoco numpy onnxruntime)"
+        if missing_sim and ok else ""
+    )
     if ok:
-        result.reason = tail.splitlines()[-1] if tail else "tests passed"
+        result.reason = (summary_line(tail) or "tests passed") + note
     else:
         result.reason = f"pytest failed ({code}): {tail}"
     return result
@@ -512,6 +526,23 @@ def select_stages(only: list[str] | None, skip: list[str] | None) -> list[Stage]
     if "manifest" not in names:
         names.append("manifest")
     return [STAGE_MAP[name] for name in names]
+
+
+_SUMMARY_RE = None
+
+
+def summary_line(text: str) -> str:
+    """The most informative last line of a captured run (pytest prints progress last)."""
+    import re
+
+    global _SUMMARY_RE
+    if _SUMMARY_RE is None:
+        _SUMMARY_RE = re.compile(r"\b\d+ (passed|failed|error|errors|skipped|xfailed|xpassed|warning|warnings)\b")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    for line in reversed(lines):
+        if _SUMMARY_RE.search(line):
+            return line
+    return lines[-1] if lines else ""
 
 
 def disk_free_gb(path: Path) -> float:
@@ -834,8 +865,10 @@ def cmd_test(args: argparse.Namespace) -> int:
             continue
         print(f"  {suite.relative_to(ctx.root)}")
         ok, code, tail = run(
-            ctx, [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(suite)],
-            cwd=suite.parent, timeout=2400,
+            ctx,
+            [sys.executable, "-m", "pytest", "-o", "addopts=", "-q", "-p", "no:cacheprovider", str(suite)],
+            cwd=suite.parent,
+            timeout=2400,
         )
         last = tail.splitlines()[-1] if tail else ""
         print(f"    {'ok' if ok else f'FAILED ({code})'}: {last}")

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import subprocess
 import time
 from dataclasses import dataclass
@@ -106,7 +107,12 @@ def check_argv(argv: Sequence[str], allowed: Iterable[str] | None = None) -> lis
     argv = [str(part) for part in argv]
     allowed_set = frozenset(allowed) if allowed is not None else DEFAULT_ALLOWED_BINARIES
     exe = Path(argv[0]).name
-    if exe not in allowed_set:
+    is_self = False
+    try:
+        is_self = Path(argv[0]).resolve() == Path(sys.executable).resolve()
+    except OSError:  # pragma: no cover - unresolvable path
+        is_self = False
+    if exe not in allowed_set and not is_self:
         raise CommandRejected(f"executable {exe!r} is not allowed (allowed: {sorted(allowed_set)})")
     for part in argv:
         for fragment in DENIED_FRAGMENTS:

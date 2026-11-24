@@ -61,9 +61,25 @@ def build_policy(path: Path, obs_dim: int, *, action_value: float = 0.0) -> Path
     return path
 
 
+def _have(*modules: str) -> bool:
+    import importlib.util
+
+    return all(importlib.util.find_spec(module) is not None for module in modules)
+
+
+#: Tests that need a real rehearsal (MuJoCo + ONNX runtime + numpy + onnx for the fixture).
+SIM_DEPS = ("mujoco", "onnxruntime", "numpy", "onnx")
+requires_sim = pytest.mark.skipif(
+    not _have(*SIM_DEPS),
+    reason="simulator dependencies missing: pip install mujoco numpy onnxruntime onnx",
+)
+
+
 @pytest.fixture(scope="session")
 def zero_policy(tmp_path_factory) -> Path:
     """Policy matching the `amp` deploy config (3-frame stack, 234 inputs)."""
+    if not _have("onnx", "numpy"):
+        pytest.skip("onnx/numpy not installed: cannot build the fixture policy")
     target = tmp_path_factory.mktemp("policies") / "policy_amp_zero.onnx"
     return build_policy(target, 234)
 
@@ -189,7 +205,7 @@ limits:
 
 
 @pytest.fixture
-def workspace(tmp_path, zero_policy) -> dict:
+def workspace(tmp_path) -> dict:
     """A fake Nyra workspace with deploy + training + evolayer repos and a config."""
     root = tmp_path / "ws"
     deploy = root / "00_body_base/roboparty_deploy"
@@ -257,8 +273,7 @@ def workspace(tmp_path, zero_policy) -> dict:
     )
     cfg.validate()
     cfg.ensure_dirs()
-    return {"root": root, "cfg": cfg, "deploy": deploy, "training": training,
-            "root_repo": root, "policy": zero_policy}
+    return {"root": root, "cfg": cfg, "deploy": deploy, "training": training, "root_repo": root}
 
 
 @pytest.fixture

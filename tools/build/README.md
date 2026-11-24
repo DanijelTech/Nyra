@@ -109,6 +109,10 @@ the interpreter, `NYRA_ROOT` to pin the workspace.
 * git, and a configured git identity if you will run EvoLayer deploys.
 * ROS 2 + colcon for the `deploy` stage; uv for the environment stages;
   pytest + pyyaml for `contract`/`evolayer`.
+* For the EvoLayer **rehearsal** tests: `python3 -m pip install mujoco numpy onnxruntime onnx`
+  (or run everything with `NYRA_PYTHON=~/.venvs/nyra/bin/python npm run build`).
+  Without them those 10 tests are reported as skipped, not failed, and the stage
+  reason says so.
 * Node 18+ only for the npm entry point — `python3 tools/build/nyra_build.py …`
   works without Node at all.
 

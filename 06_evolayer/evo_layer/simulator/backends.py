@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -96,8 +97,10 @@ class MujocoBackend:
 
     def availability(self, cfg: EvoConfig) -> tuple[bool, str]:
         conf = self._config(cfg)
-        python = conf.get("python", "python3")
-        if shutil.which(python) is None and not Path(cfg.resolve(python)).is_file():
+        # Default to the interpreter running the builder: that is where the user
+        # installs mujoco/onnxruntime, and probing anything else lies about it.
+        python = str(conf.get("python") or sys.executable)
+        if not Path(python).is_file() and shutil.which(python) is None:
             return (False, f"python interpreter not found: {python}")
         for module in ("mujoco", "onnxruntime", "numpy"):
             probe = __import__("subprocess").run(
@@ -119,7 +122,7 @@ class MujocoBackend:
         candidate: Candidate,
     ) -> Plan:
         conf = self._config(cfg)
-        python = str(conf.get("python", "python3"))
+        python = str(conf.get("python") or sys.executable)
         mjcf = candidate.mjcf or cfg.resolve(conf.get("mjcf", "00_body_base/rpo_description/mjcf/rpo.xml"))
         argv = [
             python,
@@ -194,7 +197,7 @@ class FixtureBackend:
         source = Path(sim_plan.params.get("dataset") or cfg.resolve(conf.get("dataset", "")))
         if not source.is_file():
             raise FileNotFoundError(f"replay dataset not found: {source}")
-        python = str(conf.get("python", "python3"))
+        python = str(conf.get("python") or sys.executable)
         argv = [
             python,
             "-m",
