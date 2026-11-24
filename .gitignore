@@ -16,3 +16,6 @@ __pycache__/
 *.local.yaml
 env.sh
 .env
+
+# EvoLayer runtime state (episodes, audit chain, snapshots, rehearsal artifacts)
+06_assets/evolayer/

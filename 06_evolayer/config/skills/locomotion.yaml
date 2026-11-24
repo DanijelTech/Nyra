@@ -1,0 +1,22 @@
+# Locomotion: walk / run. Deployed as the `amp` policy from roboparty_deploy.
+id: locomotion
+title: Locomotion (walk / run)
+backend: mujoco
+repo: training
+deploy_robot: rpo
+deploy_policy: amp
+train_task: RPO-AMP
+metrics: [success_rate, fall_rate, torque_peak_nm, tracking_error_rad]
+eval_suite:
+  episodes: 120
+  seeds: [0, 1, 2]
+  duration_s: 8.0
+  commands:
+    - [0.6, 0.0, 0.0]
+    - [1.0, 0.0, 0.0]
+    - [0.0, 0.0, 0.6]
+  init_poses: [stand]
+limits:
+  fall_rate_max: 0.02
+  success_drop_max: 0.02
+  min_episodes: 60

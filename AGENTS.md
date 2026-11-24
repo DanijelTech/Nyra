@@ -6,9 +6,15 @@ this file records what is easy to get wrong.
 ## What this repository is
 
 An integration monorepo for the Nyra robot (ROBOTO_ORIGIN / RPO software lineage). 21 upstream
-repositories are git submodules pinned to tested commits; `05_integration/` holds the only
-first-party code. `00_body_base/roboto_origin` is a ~4 GB **read-only snapshot** of the same modules
-— never edit it, never treat it as the source of truth.
+repositories are git submodules pinned to tested commits. First-party code lives in exactly two
+places: `05_integration/` (install / launch / export / verify) and `06_evolayer/` (the evolutionary
+loop). `00_body_base/roboto_origin` is a ~4 GB **read-only snapshot** of the same modules — never
+edit it, never treat it as the source of truth.
+
+`06_evolayer/` is the only component allowed to *change* the deployed stack, and it does so only
+after a rehearsal, a safety gate and a recorded Hermes approval. Its invariants (no self-approval,
+no shell, allowlisted paths, verified snapshots, hash-chained audit) are covered by
+`06_evolayer/tests/` — run `cd 06_evolayer && python3 -m pytest -q` after touching it.
 
 ## Hard rules
 
@@ -65,3 +71,7 @@ Style: `bash -n` + `shellcheck -S warning -x` must be clean; scripts support `--
   by `export_policy.sh --verify`.
 - Nested submodule depth: deploy (5), train (robolab + rsl_rl + 2 robot assets), MimicLite (3),
   firmware (3), inference (1), navigation (2).
+- EvoLayer rehearsal needs `mujoco`, `numpy`, `onnxruntime` (installed here); `onnx` is used by the
+  fixture-policy builder in tests; `imageio` + `MUJOCO_GL` are needed for video artifacts.
+- EvoLayer state lives in `06_assets/evolayer/` (git-ignored): `state.db`, `audit.jsonl`,
+  `snapshots/`, `artifacts/`, `sim/`. Wipe it for a clean loop.

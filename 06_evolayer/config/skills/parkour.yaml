@@ -1,0 +1,20 @@
+# Terrain traversal. Deployed as `parkour`; needs the camera node for /depth_obs.
+id: parkour
+title: Terrain traversal (parkour)
+backend: mujoco
+repo: training
+deploy_robot: rpo
+deploy_policy: parkour
+train_task: RPO-Parkour
+metrics: [success_rate, fall_rate, collision_rate, torque_peak_nm]
+eval_suite:
+  episodes: 100
+  seeds: [0, 1]
+  duration_s: 10.0
+  commands:
+    - [0.6, 0.0, 0.0]
+  init_poses: [stand]
+limits:
+  fall_rate_max: 0.08
+  collision_rate_max: 1.0
+  min_episodes: 40

@@ -1,0 +1,19 @@
+# Motion tracking (BeyondMimic). Rehearsal needs roboparty_train (Isaac Lab).
+id: tracking
+title: Motion tracking (BeyondMimic)
+backend: isaaclab
+repo: training
+deploy_robot: rpo
+deploy_policy: beyondmimic
+train_task: RPO-BeyondMimic
+metrics: [tracking_error_rad, fall_rate, torque_peak_nm]
+eval_suite:
+  episodes: 60
+  seeds: [0]
+  duration_s: 10.0
+  commands:
+    - [0.4, 0.0, 0.0]
+  init_poses: [stand]
+limits:
+  tracking_degradation_max: 0.10
+  min_episodes: 30

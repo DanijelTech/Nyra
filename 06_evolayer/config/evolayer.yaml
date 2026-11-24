@@ -1,0 +1,56 @@
+# EvoLayer configuration.
+#
+# Precedence: defaults in evo_layer/config.py → this file → config/skills/*.yaml
+#             → EVOLAYER_* environment → CLI overrides.
+#
+# Everything that gates a deployment lives here and is validated on load.
+# Secrets are NOT stored in this file; they are read from the environment:
+#   EVOLAYER_HERMES_TOKEN            bearer token your local Hermes presents
+#   EVOLAYER_HERMES_SECRET           HMAC key for one-time decision tokens
+#   EVOLAYER_HERMES_OUTBOUND_SECRET  HMAC key for webhook/callback signing
+
+state_dir: 06_assets/evolayer
+audit: 06_assets/evolayer/audit.jsonl
+snapshots: 06_assets/evolayer/snapshots
+
+# Hard limits. A deployment never crosses these, whatever the statistics say.
+limits:
+  fall_rate_max: 0.02          # absolute fall rate ceiling
+  torque_ratio_max: 1.0        # peak torque / weakest URDF effort limit
+  joint_vel_ratio_max: 1.0     # peak joint velocity / weakest URDF velocity limit
+  collision_rate_max: 0.50     # collisions per episode
+  battery_min_v: 46.0
+  success_drop_max: 0.02       # absolute success-rate drop allowed vs baseline
+  tracking_degradation_max: 0.10
+  min_episodes: 60             # evidence required before a baseline or a verdict
+  stat_alpha: 0.05
+
+hermes:
+  bind: 127.0.0.1
+  port: 8765
+  require_auth: true            # transport auth: bearer token or HMAC signature
+  require_decision_token: false  # additionally demand a single-use token per decision
+  token_ttl_s: 900
+  # How reviews reach YOUR local Hermes (EvoLayer has no built-in approval UI):
+  #   pull     — your Hermes polls GET /api/pending and GET /api/proposals/<id>
+  #   webhook  — EvoLayer POSTs a signed ReviewRequest to `url`
+  outbound:
+    mode: pull
+    url: ""                                  # e.g. http://127.0.0.1:8790/evolayer/review
+    secret_env: EVOLAYER_HERMES_OUTBOUND_SECRET
+    timeout_s: 10.0
+    retries: 3
+    backoff_s: 1.5
+
+simulator:
+  default_backend: mujoco      # GPU-free, deploy-equivalent PD control
+  max_episodes: 400
+  timeout_s: 1800
+
+# Optional narrative writer. It may only add prose; it never computes or vetoes.
+llm:
+  enabled: false
+  base_url: ""
+  model: ""
+  api_key_env: EVOLAYER_LLM_API_KEY
+  max_calls_per_run: 4

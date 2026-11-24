@@ -82,7 +82,8 @@ Nyra/
 ├── 05_integration/
 │   ├── scripts/                     # setup_all, launch_base, export_policy, retarget_and_train, update_all, check_compat
 │   └── docs/                        # compatibility contract, troubleshooting
-└── 06_assets/                       # generated reports (compat report, logs) — not tracked
+├── 06_evolayer/                     # EvoLayer (Hermes-Evo): observe → propose → rehearse → gate → Hermes → deploy
+└── 06_assets/                       # generated reports and EvoLayer state — not tracked
 ```
 
 Layer names match [Party OS](01_roadmap/party-os/README.md), so upstream docs and this layout use
@@ -445,6 +446,17 @@ All in `05_integration/scripts/`, all support `--help` and `--dry-run`.
 | `retarget_and_train.sh` | hhtools retarget → dataset conversion → training for `train` / `ufo` / `mimiclite` / `partymimic` |
 | `update_all.sh` | `git submodule sync/update --remote` with a pin report; `--check` shows drift without touching anything |
 | `check_compat.py` | URDF ↔ MJCF ↔ UFO ↔ deploy ↔ train joint-order and asset verification; writes `06_assets/compat_report.json` |
+
+A separate, self-contained layer sits above all of this:
+
+| Component | Purpose |
+|---|---|
+| `06_evolayer/` | **EvoLayer** — a sandboxed evolutionary loop: observe → critique → propose → rehearse → safety gate → **Hermes decides** → deploy → rollback |
+| `06_evolayer/docs/HERMES_CONTRACT.md` | the fork your local Hermes attaches to (signed review requests, signed/bearer decisions) |
+
+EvoLayer never changes the robot on its own: a proposal must survive a real
+MuJoCo rehearsal, hard safety limits and an explicit approval recorded in a
+hash-chained audit log. See `06_evolayer/README.md`.
 
 Typical first run:
 

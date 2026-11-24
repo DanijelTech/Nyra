@@ -1,0 +1,20 @@
+# Balance recovery / get-up. Deployed as the `getup` policy.
+id: recovery
+title: Balance recovery / get-up
+backend: mujoco
+repo: training
+deploy_robot: rpo
+deploy_policy: getup
+train_task: RPO-Getup-Mimic
+metrics: [success_rate, fall_rate, torque_peak_nm]
+eval_suite:
+  episodes: 120
+  seeds: [0, 1, 2]
+  duration_s: 8.0
+  commands:
+    - [0.0, 0.0, 0.0]
+  init_poses: [prone, supine, side_left, side_right]
+limits:
+  fall_rate_max: 0.05
+  success_drop_max: 0.01
+  min_episodes: 60

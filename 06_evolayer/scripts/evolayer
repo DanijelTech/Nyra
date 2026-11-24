@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Wrapper so `evolayer ...` works without `pip install -e .`.
+# Keeps the current working directory (the CLI resolves --root from the config/workspace).
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="$here/..${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m evo_layer "$@"
