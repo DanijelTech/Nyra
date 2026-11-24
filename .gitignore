@@ -25,3 +25,5 @@ env.sh
 
 # npm pack output
 *.tgz
+package-lock.json
+node_modules/
