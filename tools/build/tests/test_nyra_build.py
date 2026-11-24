@@ -8,6 +8,7 @@ tested as a subprocess when ``node`` is available.
 from __future__ import annotations
 
 import json
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -353,6 +354,56 @@ def test_contract_stage_fails_when_the_checker_is_missing(ws, capsys):
     out = capsys.readouterr().out
     assert rc == 1
     assert "check_compat.py is missing" in out
+
+
+def test_use_python_remembers_the_interpreter(ws, capsys):
+    assert run_build("--root", str(ws), "use-python", sys.executable) == 0
+    config = json.loads((ws / ".nyra-build.json").read_text(encoding="utf-8"))
+    assert config["python"] == str(pathlib.Path(sys.executable).absolute())
+    assert run_build("--root", str(ws), "use-python", "--unset") == 0
+    assert not (ws / ".nyra-build.json").exists()
+
+
+def test_use_python_keeps_a_venv_symlink_intact(ws, capsys):
+    """A venv's bin/python is a symlink; resolving it would lose the venv."""
+    fake_venv = ws / "fake-venv/bin"
+    fake_venv.mkdir(parents=True)
+    interpreter = fake_venv / "python"
+    interpreter.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-c" ]; then exit 0; fi\n'
+        'if [ "$1" = "-V" ]; then echo "Python 3.12.3"; exit 0; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    interpreter.chmod(0o755)
+    link = fake_venv / "python3"
+    link.symlink_to(Path(sys.executable))
+    assert run_build("--root", str(ws), "use-python", str(interpreter)) == 0
+    config = json.loads((ws / ".nyra-build.json").read_text(encoding="utf-8"))
+    assert config["python"] == str(interpreter.absolute())
+
+
+def test_use_python_rejects_a_broken_interpreter(ws, capsys):
+    bad = ws / "not-python"
+    bad.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    bad.chmod(0o755)
+    assert run_build("--root", str(ws), "use-python", str(bad)) == 2
+    assert "3.10+" in capsys.readouterr().err
+
+
+def test_doctor_suggests_an_interpreter_that_has_the_deps(ws, capsys, monkeypatch):
+    ctx = nyra_build.Context(root=ws, build_dir=ws / "06_assets/build")
+    ctx.capabilities = {"numpy": {"available": False}, "mujoco": {"available": False},
+                        "onnxruntime": {"available": False}}
+    # A *different* interpreter that has what this one lacks.
+    alt = ws / "alt-python"
+    alt.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    alt.chmod(0o755)
+    monkeypatch.setattr(nyra_build, "python_candidates", lambda root: [str(alt)])
+    monkeypatch.setattr(nyra_build, "probe_import", lambda module, python: {"available": True})
+    hint = nyra_build.suggest_python(ctx)
+    assert "use-python" in hint and str(alt) in hint
 
 
 def test_doctor_reports_capabilities_and_modules(ws, capsys):

@@ -25,8 +25,32 @@ if (!fs.existsSync(script)) {
   process.exit(1);
 }
 
+function findRoot(start) {
+  let dir = path.resolve(start);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".gitmodules"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function configuredPython() {
+  const root = process.env.NYRA_ROOT || findRoot(process.cwd());
+  if (!root) return "";
+  const file = path.join(root, ".nyra-build.json");
+  if (!fs.existsSync(file)) return "";
+  try {
+    const configured = JSON.parse(fs.readFileSync(file, "utf8")).python || "";
+    return configured && fs.existsSync(configured) ? configured : "";
+  } catch {
+    return "";
+  }
+}
+
 const python =
   process.env.NYRA_PYTHON ||
+  configuredPython() ||
   (process.platform === "win32" ? "python" : "python3");
 
 const args = [script, ...process.argv.slice(2)];

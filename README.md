@@ -138,8 +138,17 @@ npm run doctor         # toolchain, capabilities, modules, EvoLayer self-check
 ```
 
 `npm run build` runs every stage this machine supports and **skips the rest with a
-reason** (`deploy` without ROS 2, `training` without Isaac Lab). Python
-environments are opt-in because they download ~25 GB:
+reason** (`deploy` without ROS 2, `training` without Isaac Lab).
+
+One-time, so the rehearsal tests have MuJoCo — the builder remembers the interpreter:
+
+```bash
+python3 -m venv ~/.venvs/nyra
+~/.venvs/nyra/bin/pip install pyyaml pytest mujoco numpy onnxruntime onnx
+npx nyra-build use-python ~/.venvs/nyra/bin/python
+```
+
+Python environments are opt-in because they download ~25 GB:
 
 ```bash
 npm run build:envs     # + motion (~15 GB) and training (~10 GB) environments

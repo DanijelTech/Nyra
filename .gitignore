@@ -27,3 +27,6 @@ env.sh
 *.tgz
 package-lock.json
 node_modules/
+
+# local nyra-build interpreter choice (per machine)
+.nyra-build.json

@@ -7,6 +7,24 @@ npx nyra-build build # build everything this machine supports
 npx nyra-build status
 ```
 
+### One-time: pick the interpreter (recommended)
+
+The rehearsal tests need `mujoco`/`onnxruntime`, which usually live in a venv. Tell
+the builder once and it remembers (`.nyra-build.json`, git-ignored) — no env var to
+re-type:
+
+```bash
+python3 -m venv ~/.venvs/nyra
+~/.venvs/nyra/bin/pip install pyyaml pytest mujoco numpy onnxruntime onnx
+npx nyra-build use-python ~/.venvs/nyra/bin/python
+```
+
+`use-python` with no argument picks the first existing candidate
+(`./.venv`, `./venv`, `~/.venvs/nyra`, `06_evolayer/.venv`). Precedence is
+`NYRA_PYTHON` env var → `.nyra-build.json` → `python3` on PATH. `nyra-build
+use-python --unset` forgets it. `nyra-build doctor` prints the interpreter in use
+and, if another candidate has the missing dependencies, tells you the exact command.
+
 `npm run build` is the same thing. The package is `private: true`: it is meant to be
 run inside a checkout, not published to a registry.
 

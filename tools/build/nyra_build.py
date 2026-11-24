@@ -49,9 +49,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.2"
+BUILDER_VERSION = "1.0.3"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
+#: Local, git-ignored record of the interpreter this workspace should build with.
+LOCAL_CONFIG = Path(".nyra-build.json")
 
 OK, SKIPPED, FAILED, CACHED = "ok", "skipped", "failed", "cached"
 
@@ -202,6 +204,72 @@ def probe_import(module: str, python: str) -> dict[str, Any]:
     if result.returncode == 0:
         return {"available": True, "detail": f"import {module} ok"}
     return {"available": False, "detail": f"import {module} failed: {(result.stderr or '').strip()[:120]}"}
+
+
+def local_config_path(root: Path) -> Path:
+    return root / LOCAL_CONFIG
+
+
+def read_local_python(root: Path) -> str:
+    path = local_config_path(root)
+    if not path.is_file():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    candidate = str(data.get("python", ""))
+    return candidate if candidate and Path(candidate).is_file() else ""
+
+
+def write_local_python(root: Path, python: str) -> Path:
+    path = local_config_path(root)
+    payload = {"python": python, "set_at": time.time(), "builder": BUILDER_VERSION}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def probe_python(path: str) -> tuple[bool, str]:
+    """A candidate interpreter must be Python 3.10+ and runnable."""
+    try:
+        result = subprocess.run(
+            [path, "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"],
+            capture_output=True, text=True, timeout=60, shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return (False, f"{path}: {exc}")
+    if result.returncode != 0:
+        return (False, f"{path}: needs Python 3.10+ (or is not runnable)")
+    version = subprocess.run([path, "-V"], capture_output=True, text=True, timeout=60, shell=False)
+    return (True, (version.stdout or version.stderr or "").strip() or path)
+
+
+def python_candidates(root: Path) -> list[str]:
+    """Places a user plausibly installed the rehearsal dependencies."""
+    home = Path.home()
+    candidates = [
+        root / ".venv/bin/python",
+        root / "venv/bin/python",
+        home / ".venvs/nyra/bin/python",
+        root / "06_evolayer/.venv/bin/python",
+    ]
+    return [str(path) for path in candidates if path.is_file()]
+
+
+def suggest_python(ctx: Context, needed: tuple[str, ...] = ("numpy", "mujoco", "onnxruntime")) -> str:
+    """If another interpreter has the deps this one lacks, name it (with the command)."""
+    if not ctx.missing(needed):
+        return ""
+    for candidate in python_candidates(ctx.root):
+        if Path(candidate).resolve() == Path(sys.executable).resolve():
+            continue
+        probes = [probe_import(module, candidate) for module in needed]
+        if all(probe.get("available") for probe in probes):
+            return (
+                f"{', '.join(needed)} are available in {candidate} — "
+                f"run: nyra-build use-python {candidate}"
+            )
+    return ""
 
 
 def detect_capabilities(ctx: Context) -> dict[str, dict[str, Any]]:
@@ -796,7 +864,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         print(f"nyra-build: {blocked}", file=sys.stderr)
         return 2
     if not args.json:
-        print(f"nyra-build {BUILDER_VERSION} · {ctx.root}{' (dry run)' if ctx.dry_run else ''}")
+        print(
+            f"nyra-build {BUILDER_VERSION} · {ctx.root} · "
+            f"python {sys.version.split()[0]} ({sys.executable})"
+            f"{' (dry run)' if ctx.dry_run else ''}"
+        )
         available = sum(1 for entry in ctx.capabilities.values() if entry.get("available"))
         print(f"capabilities {available}/{len(ctx.capabilities)} · stages {len(stages)}")
 
@@ -922,6 +994,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(json.dumps(report, indent=2))
         return 0
     print(f"nyra-build {BUILDER_VERSION} · {ctx.root}")
+    print(f"interpreter: {sys.executable} (python {sys.version.split()[0]})")
+    configured = read_local_python(ctx.root)
+    if configured and Path(configured).resolve() != Path(sys.executable).resolve():
+        print(f"  note: {LOCAL_CONFIG} says {configured}, but this run uses {sys.executable}")
     print(f"git: {report['git'].get('branch')} {str(report['git'].get('head'))[:10]} "
           f"{'dirty' if report['git'].get('dirty') else 'clean'}")
     for name, entry in sorted(report["capabilities"].items()):
@@ -932,9 +1008,54 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  {mark} {name}")
     if evolayer is not None:
         print(f"  {'ok  ' if evolayer['ok'] else 'FAIL'} evolayer doctor")
+    hint = suggest_python(ctx)
+    if hint:
+        print(f"  hint: {hint}")
     required = ("git", "python3")
     missing = [name for name in required if not ctx.has(name)]
     return 1 if missing else 0
+
+
+def cmd_use_python(args: argparse.Namespace) -> int:
+    ctx = _context(args)
+    if args.unset:
+        path = local_config_path(ctx.root)
+        if path.is_file():
+            path.unlink()
+            print(f"removed {path.relative_to(ctx.root)} (back to the default python3 on PATH)")
+        else:
+            print("no local interpreter configured")
+        return 0
+    candidate = args.python or ""
+    if not candidate:
+        found = python_candidates(ctx.root)
+        if not found:
+            print(
+                "no candidate interpreter found. Create one first:\n"
+                "  python3 -m venv ~/.venvs/nyra && ~/.venvs/nyra/bin/pip install pyyaml pytest "
+                "mujoco numpy onnxruntime onnx",
+                file=sys.stderr,
+            )
+            return 2
+        candidate = found[0]
+    # Do NOT resolve symlinks: a venv's bin/python is a symlink to the base
+    # interpreter, and following it would lose the venv's site-packages.
+    candidate = str(Path(candidate).expanduser().absolute())
+    if not Path(candidate).is_file():
+        print(f"nyra-build: not a file: {candidate}", file=sys.stderr)
+        return 2
+    ok, detail = probe_python(candidate)
+    if not ok:
+        print(f"nyra-build: {detail}", file=sys.stderr)
+        return 2
+    path = write_local_python(ctx.root, candidate)
+    caps = {module: probe_import(module, candidate).get("available") for module in
+            ("yaml", "pytest", "numpy", "mujoco", "onnxruntime", "onnx")}
+    print(f"using {candidate} ({detail})")
+    print(f"written to {path.relative_to(ctx.root)} — every nyra-build run will use it")
+    for module, available in caps.items():
+        print(f"  {'ok  ' if available else 'MISS'} {module}")
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -1082,6 +1203,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = add("doctor", cmd_doctor, "toolchain, capabilities and module state")
     doctor.add_argument("--json", action="store_true")
+
+    use_python = add("use-python", cmd_use_python,
+                     "remember which Python interpreter (and its venv) nyra-build should use")
+    use_python.add_argument("python", nargs="?", help="path to a python 3.10+ interpreter")
+    use_python.add_argument("--unset", action="store_true", help="forget the local choice")
 
     status = add("status", cmd_status, "show the last build manifest")
     status.add_argument("--json", action="store_true")
