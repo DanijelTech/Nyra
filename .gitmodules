@@ -1,0 +1,84 @@
+[submodule "00_body_base/roboto_origin"]
+	path = 00_body_base/roboto_origin
+	url = https://github.com/Roboparty/roboto_origin.git
+	branch = main
+[submodule "00_body_base/rpo_hardware"]
+	path = 00_body_base/rpo_hardware
+	url = https://github.com/Roboparty/rpo_hardware.git
+	branch = main
+[submodule "00_body_base/rpo_description"]
+	path = 00_body_base/rpo_description
+	url = https://github.com/Roboparty/rpo_description.git
+	branch = main
+[submodule "00_body_base/roboparty_deploy"]
+	path = 00_body_base/roboparty_deploy
+	url = https://github.com/Roboparty/roboparty_deploy.git
+	branch = main
+[submodule "00_body_base/roboparty_firmware"]
+	path = 00_body_base/roboparty_firmware
+	url = https://github.com/Roboparty/roboparty_firmware.git
+	branch = main
+[submodule "00_body_base/roboparty_inference"]
+	path = 00_body_base/roboparty_inference
+	url = https://github.com/Roboparty/roboparty_inference.git
+	branch = master
+[submodule "00_body_base/roboparty_camera"]
+	path = 00_body_base/roboparty_camera
+	url = https://github.com/Roboparty/roboparty_camera.git
+	branch = main
+[submodule "00_body_base/roboparty_navigation"]
+	path = 00_body_base/roboparty_navigation
+	url = https://github.com/Roboparty/roboparty_navigation.git
+	branch = master
+[submodule "00_body_base/roboparty_xr_teleop"]
+	path = 00_body_base/roboparty_xr_teleop
+	url = https://github.com/Roboparty/roboparty_xr_teleop.git
+	branch = main
+[submodule "01_roadmap/party-os"]
+	path = 01_roadmap/party-os
+	url = https://github.com/Roboparty/Party_OS.git
+	branch = main
+[submodule "02_motion_infra/human-humanoid-tools"]
+	path = 02_motion_infra/human-humanoid-tools
+	url = https://github.com/Roboparty/human-humanoid-tools.git
+	branch = main
+[submodule "02_motion_infra/MimicLite"]
+	path = 02_motion_infra/MimicLite
+	url = https://github.com/Roboparty/MimicLite.git
+	branch = main
+[submodule "02_motion_infra/PartyMimic"]
+	path = 02_motion_infra/PartyMimic
+	url = https://github.com/Roboparty/PartyMimic.git
+	branch = main
+[submodule "02_motion_infra/UFO"]
+	path = 02_motion_infra/UFO
+	url = https://github.com/Roboparty/UFO.git
+	branch = main
+[submodule "02_motion_infra/any4hdmi"]
+	path = 02_motion_infra/any4hdmi
+	url = https://github.com/EGalahad/any4hdmi.git
+	branch = main
+[submodule "03_advanced/PredActor"]
+	path = 03_advanced/PredActor
+	url = https://github.com/Roboparty/PredActor.git
+	branch = master
+[submodule "03_advanced/I-BFM-Code"]
+	path = 03_advanced/I-BFM-Code
+	url = https://github.com/Roboparty/I-BFM-Code.git
+	branch = main
+[submodule "03_advanced/P-BFM"]
+	path = 03_advanced/P-BFM
+	url = https://github.com/Roboparty/P-BFM.git
+	branch = main
+[submodule "03_advanced/INTACT-JEPA"]
+	path = 03_advanced/INTACT-JEPA
+	url = https://github.com/Roboparty/INTACT-JEPA.git
+	branch = main
+[submodule "03_advanced/SADL"]
+	path = 03_advanced/SADL
+	url = https://github.com/Roboparty/SADL.git
+	branch = main
+[submodule "04_training/roboparty_train"]
+	path = 04_training/roboparty_train
+	url = https://github.com/Roboparty/roboparty_train.git
+	branch = main

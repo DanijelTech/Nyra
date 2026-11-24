@@ -1,0 +1,18 @@
+# Toolchains cloned next to the modules, not part of the project
+04_training/IsaacLab-3.0.0/
+
+# Generated reports, logs and motion scratch space
+06_assets/*
+!06_assets/.gitkeep
+
+# Python / uv
+.venv/
+.venv-physx/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local overrides
+*.local.yaml
+env.sh
+.env
