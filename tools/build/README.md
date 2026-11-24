@@ -121,6 +121,26 @@ The launcher has **no dependencies**, forwards argv/stdio and returns the child'
 exit code (and re-raises signals, so Ctrl-C behaves). Set `NYRA_PYTHON` to choose
 the interpreter, `NYRA_ROOT` to pin the workspace.
 
+## Host notes (verified on Ubuntu 24.04 + RTX 50-series)
+
+* **ROS 2**: 24.04 ships **Jazzy** (22.04 uses Humble). `deploy` needs it:
+
+  ```bash
+  sudo apt install -y ros-jazzy-ros-base ros-jazzy-joy python3-colcon-common-extensions
+  sudo apt install -y ccache libfmt-dev libspdlog-dev libeigen3-dev screen zlib1g-dev
+  ```
+
+  `nyra-build` finds `/opt/ros/*/setup.bash` itself and runs `colcon` inside a
+  generated, shlex-quoted script — you do **not** need to source ROS in your shell,
+  and its "no shell" rule stays intact (the script is the only shell, and it is
+  built from an allowlisted argv).
+* **NVIDIA 50-series (Blackwell, sm_120)**: needs a CUDA 12.8+ PyTorch. The
+  `uv.lock` files in the motion modules pin `torch` with `cu128`, so `uv sync`
+  is the correct way to install them — do not `pip install torch` by hand.
+* **VRAM**: 16 GB per card is enough for `roboparty_train` flat-terrain tasks at
+  reduced `--num_envs`; the MimicLite/UFO published recipes assume 24 GB or
+  8×H20 and are smoke-test-only on 16 GB.
+
 ## Requirements
 
 * Python 3.10+ (stdlib only for the builder itself).

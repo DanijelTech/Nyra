@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-BUILDER_VERSION = "1.0.4"
+BUILDER_VERSION = "1.0.5"
 MANIFEST_SCHEMA = 1
 BUILD_DIR = Path("06_assets/build")
 #: Local, git-ignored record of the interpreter this workspace should build with.
@@ -274,7 +274,8 @@ def suggest_python(ctx: Context, needed: tuple[str, ...] = ("numpy", "mujoco", "
 
 def detect_capabilities(ctx: Context) -> dict[str, dict[str, Any]]:
     caps: dict[str, dict[str, Any]] = {}
-    for name in ("git", "uv", "colcon", "ros2", "node", "npm", "ffmpeg"):
+    sink_ros2 = which("ros2")
+    for name in ("git", "uv", "colcon", "node", "npm", "ffmpeg"):
         path = which(name)
         caps[name] = {"available": bool(path), "detail": path or f"{name} not found on PATH"}
     for capability, module in (
@@ -289,6 +290,11 @@ def detect_capabilities(ctx: Context) -> dict[str, dict[str, Any]]:
     caps["isaaclab"] = {
         "available": isaac.is_dir(),
         "detail": str(isaac) if isaac.is_dir() else "missing 04_training/IsaacLab-3.0.0",
+    }
+    setup = find_ros_setup()
+    caps["ros2"] = {
+        "available": bool(setup) or sink_ros2 is not None,
+        "detail": str(setup) if setup else (sink_ros2 or "not found under /opt/ros"),
     }
     caps["python3"] = {"available": True, "detail": sys.version.split()[0]}
     return caps
@@ -469,6 +475,63 @@ def stage_assets(ctx: Context) -> StageResult:
     )
 
 
+#: Environment variables a sourced ROS 2 overlay needs (colcon, ament, DDS).
+ROS_ENV_VARS = (
+    "AMENT_PREFIX_PATH", "COLCON_PREFIX_PATH", "CMAKE_PREFIX_PATH", "LD_LIBRARY_PATH",
+    "ROS_DISTRO", "ROS_VERSION", "ROS_PYTHON_VERSION", "ROS_LOCALHOST_ONLY",
+    "RMW_IMPLEMENTATION", "FASTRTPS_DEFAULT_PROFILES_FILE", "ROS_AUTOMATIC_DISCOVERY_RANGE",
+)
+
+
+def find_ros_setup(base: Path = Path("/opt/ros")) -> Path | None:
+    """The ROS 2 setup.bash this machine has, if any (``base`` is injectable for tests)."""
+    import os
+
+    distro = os.environ.get("ROS_DISTRO", "")
+    if distro and (base / distro / "setup.bash").is_file():
+        return base / distro / "setup.bash"
+    candidates = sorted(base.glob("*/setup.bash")) if base.is_dir() else []
+    return candidates[0] if candidates else None
+
+
+def ros_script(setup: Path, argv: list[str]) -> str:
+    """A tiny script that sources ROS and execs an already-allowlisted argv.
+
+    The pipeline keeps "no shell" as its rule, so the only place a shell exists is
+    this generated file: every argument is quoted with shlex, so nothing from user
+    data can become a command. It is written to the build directory and removed
+    afterwards.
+    """
+    import shlex
+
+    quoting = " ".join(shlex.quote(part) for part in argv)
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"source {shlex.quote(str(setup))}\n"
+        f"exec {quoting}\n"
+    )
+
+
+def run_in_ros_env(ctx: Context, argv: list[str], *, cwd: Path) -> tuple[bool, int, str]:
+    """Run ``argv`` with ROS 2 sourced, without handing the guard a shell string."""
+    import os
+
+    setup = find_ros_setup()
+    if setup is None or os.environ.get("AMENT_PREFIX_PATH"):
+        # Already sourced in this shell (or no ROS): plain run, env passed through.
+        return run(ctx, argv, cwd=cwd)
+    assert setup is not None
+    ctx.build_dir.mkdir(parents=True, exist_ok=True)
+    script = ctx.build_dir / "ros-env.sh"
+    script.write_text(ros_script(setup, argv), encoding="utf-8")
+    script.chmod(0o700)
+    try:
+        return run(ctx, ["bash", str(script)], cwd=cwd)
+    finally:
+        script.unlink(missing_ok=True)
+
+
 def stage_deploy(ctx: Context) -> StageResult:
     missing = ctx.missing(("colcon", "ros2"))
     if missing:
@@ -482,9 +545,11 @@ def stage_deploy(ctx: Context) -> StageResult:
         "--packages-up-to", "roboparty_inference",
     ]
     result.commands.append(argv)
-    ok, code, tail = run(ctx, argv, cwd=ctx.deploy, timeout=3600)
+    ok, code, tail = run_in_ros_env(ctx, argv, cwd=ctx.deploy)
     if not ok:
-        result.status, result.reason = FAILED, f"colcon build failed ({code}): {tail}"
+        setup = find_ros_setup()
+        hint = "" if setup else " (no ROS 2 setup.bash found under /opt/ros — install ros-jazzy-ros-base)"
+        result.status, result.reason = FAILED, f"colcon build failed ({code}):{hint} {tail}"
         return result
     result.reason = "roboparty_inference built"
     if (ctx.deploy / "install/setup.bash").is_file():

@@ -349,6 +349,38 @@ def test_clean_refuses_to_delete_tracked_files(ws, capsys):
     assert (ws / "06_evolayer/config/skills/locomotion.yaml").exists()
 
 
+def test_ros_script_quotes_every_argument(tmp_path):
+    """The only shell in the pipeline is generated; nothing from data can inject."""
+    script = nyra_build.ros_script(
+        Path("/opt/ros/jazzy/setup.bash"),
+        ["colcon", "build", "--base-paths", "src", "weird;rm -rf /tmp/x", "$(id)", "a b"],
+    )
+    assert script.splitlines()[0] == "#!/usr/bin/env bash"
+    assert "source /opt/ros/jazzy/setup.bash" in script
+    assert script.rstrip().endswith("'a b'")
+    body = script.splitlines()[-1]
+    assert body.startswith("exec colcon build --base-paths src ")
+    # Every hostile fragment is quoted, so the shell sees a literal argument.
+    assert "'weird;rm -rf /tmp/x'" in body
+    assert "'$(id)'" in body
+
+
+def test_find_ros_setup_honours_ros_distro(monkeypatch, tmp_path):
+    base = tmp_path / "opt/ros"
+    for distro in ("humble", "jazzy"):
+        (base / distro).mkdir(parents=True)
+        (base / distro / "setup.bash").write_text(f"# {distro}", encoding="utf-8")
+
+    monkeypatch.setenv("ROS_DISTRO", "jazzy")
+    assert nyra_build.find_ros_setup(base) == base / "jazzy/setup.bash"
+
+    monkeypatch.setenv("ROS_DISTRO", "rolling")  # not installed -> first available
+    assert nyra_build.find_ros_setup(base) == base / "humble/setup.bash"
+
+    monkeypatch.delenv("ROS_DISTRO")
+    assert nyra_build.find_ros_setup(tmp_path / "nowhere") is None
+
+
 def test_contract_stage_fails_when_the_checker_is_missing(ws, capsys):
     rc = run_build("--root", str(ws), "build", "--only", "contract")
     out = capsys.readouterr().out

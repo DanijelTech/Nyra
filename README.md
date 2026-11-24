@@ -190,6 +190,12 @@ git -C 02_motion_infra/MimicLite config url."https://github.com/".insteadOf "git
 git -C 02_motion_infra/MimicLite submodule update --init --recursive
 ```
 
+### Host specifics (Ubuntu 24.04, NVIDIA 50-series)
+
+Ubuntu 24.04 pairs with **ROS 2 Jazzy** (22.04 uses Humble); Blackwell GPUs
+(sm_120) need the CUDA 12.8 wheels that the modules' `uv.lock` files already pin.
+See [`tools/build/README.md`](tools/build/README.md#host-notes-verified-on-ubuntu-2404--rtx-50-series).
+
 ### Step 1 — body + base control (Tier 0)
 
 On the robot controller (or a dev box for a build-only check):
