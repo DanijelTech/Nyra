@@ -25,8 +25,17 @@ npx nyra-build use-python ~/.venvs/nyra/bin/python
 use-python --unset` forgets it. `nyra-build doctor` prints the interpreter in use
 and, if another candidate has the missing dependencies, tells you the exact command.
 
-`npm run build` is the same thing. The package is `private: true`: it is meant to be
-run inside a checkout, not published to a registry.
+`npm run build` is the same thing. The package is `private: true` and is **not
+published to a registry** — install it from the release tarball:
+
+```bash
+curl -LO https://github.com/DanijelTech/Nyra/releases/latest/download/nyra-workspace-1.0.10.tgz
+npm install -g ./nyra-workspace-1.0.10.tgz
+```
+
+GitHub *Packages* (the registry tab) stays empty on purpose: the tarball contains the
+build tooling only, not the 21 submodules (~11 GB), so it cannot build a robot by
+itself — it needs a checkout.
 
 ## What "build" means
 
