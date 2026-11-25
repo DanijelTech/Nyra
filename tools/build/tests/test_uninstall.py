@@ -196,6 +196,52 @@ def test_apt_without_ros_all_points_at_the_flag(tmp_path):
     assert "--apt-ros-all" in result.stdout
 
 
+def test_shell_rc_lines_are_removed_with_a_backup(tmp_path):
+    root, home = fake_checkout(tmp_path)
+    zshrc = home / ".zshrc"
+    zshrc.write_text(
+        "export EDITOR=vim\n"
+        "source /opt/ros/jazzy/setup.bash\n"
+        "alias ll='ls -l'\n"
+        "source ~/ros2_ws/install/setup.bash\n"
+        "export ROS_DOMAIN_ID=7\n",
+        encoding="utf-8",
+    )
+    result = run(root, home, "--yes", "--shell-rc")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    remaining = zshrc.read_text(encoding="utf-8")
+    assert "EDITOR=vim" in remaining and "alias ll" in remaining
+    assert "/opt/ros/" not in remaining
+    assert "ros2_ws" not in remaining
+    # A harmless leftover env var is the user's business, not ours to delete.
+    assert "ROS_DOMAIN_ID=7" in remaining
+    backups = list(home.glob(".zshrc.nyra-uninstall-*.bak"))
+    assert len(backups) == 1
+    assert "/opt/ros/jazzy/setup.bash" in backups[0].read_text(encoding="utf-8")
+
+
+def test_shell_rc_dry_run_changes_nothing(tmp_path):
+    root, home = fake_checkout(tmp_path)
+    zshrc = home / ".zshrc"
+    original = "source /opt/ros/jazzy/setup.bash\n"
+    zshrc.write_text(original, encoding="utf-8")
+    result = run(root, home, "--shell-rc")
+    assert result.returncode == 0
+    assert "would remove" in result.stdout
+    assert zshrc.read_text(encoding="utf-8") == original
+    assert not list(home.glob(".zshrc.nyra-uninstall-*.bak"))
+
+
+def test_ros_dirs_dry_run_lists_them(tmp_path):
+    root, home = fake_checkout(tmp_path)
+    (home / ".ros/log").mkdir(parents=True)
+    result = run(root, home, "--ros-dirs")
+    assert result.returncode == 0
+    assert str(home / ".ros") in result.stdout
+    assert (home / ".ros/log").is_dir(), "dry run must not delete"
+
+
 def test_refuses_dangerous_paths(tmp_path):
     root, home = fake_checkout(tmp_path)
     for target in ("/", str(home), str(tmp_path)):

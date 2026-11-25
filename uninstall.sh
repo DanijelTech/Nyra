@@ -48,6 +48,7 @@ trap '[[ -n "${NYRA_UNINSTALL_COPY:-}" ]] && rm -f "$NYRA_UNINSTALL_COPY"' EXIT
 ASSUME_YES=0
 DRY_RUN=1
 APT_ROS_ALL=0 APT_AUTOREMOVE=0
+DO_SHELL_RC=0 DO_ROS_DIRS=0
 DO_BUILD=0 DO_ENVS=0 DO_NPM=0 DO_UV_CACHE=0 DO_APT=0 DO_REPO=0 KEEP_REPO=0
 APT_GENERIC=0
 REPO="$REPO_DEFAULT"
@@ -66,6 +67,8 @@ while (($#)); do
     --apt) DO_APT=1; shift ;;
     --apt-generic) DO_APT=1; APT_GENERIC=1; shift ;;
     --apt-ros-all) DO_APT=1; APT_ROS_ALL=1; shift ;;
+    --shell-rc) DO_SHELL_RC=1; shift ;;
+    --ros-dirs) DO_ROS_DIRS=1; shift ;;
     --apt-autoremove) DO_APT=1; APT_AUTOREMOVE=1; shift ;;
     --repo) DO_REPO=1; shift ;;
     --keep-repo) KEEP_REPO=1; shift ;;
@@ -90,7 +93,7 @@ if [[ ! -f "$RESOLVED_REPO/.gitmodules" ]]; then
   echo "uninstall: refusing '$RESOLVED_REPO': no .gitmodules (not a Nyra checkout). Use --force-path to override." >&2
   [[ "${FORCE_PATH:-0}" == 1 ]] || exit 2
 fi
-if (( !DO_BUILD && !DO_ENVS && !DO_NPM && !DO_UV_CACHE && !DO_APT && !DO_REPO )); then
+if (( !DO_BUILD && !DO_ENVS && !DO_NPM && !DO_UV_CACHE && !DO_APT && !DO_REPO && !DO_SHELL_RC && !DO_ROS_DIRS )); then
   DO_BUILD=1; DO_ENVS=1; DO_NPM=1; DO_REPO=1   # sensible default plan (still dry run)
 fi
 
@@ -365,7 +368,68 @@ remove_apt() {
       fi
     fi
   fi
-  say "  leftover config dirs are yours to delete: /opt/ros, ~/.ros, any ros2_ws you built"
+  say "  add --shell-rc to drop the 'source /opt/ros/...' lines from ~/.bashrc / ~/.zshrc"
+  say "  add --ros-dirs to remove /opt/ros and ~/.ros"
+}
+
+# ---------------------------------------------------------------- 5b. shell rc files
+
+#: Lines that *source* ROS or a workspace this project built. Deliberately narrow:
+#: a leftover "export ROS_DOMAIN_ID=..." is harmless and stays the user's choice.
+RC_PATTERN='/opt/ros/|ROS_DISTRO|ROS_VERSION|ros2_ws'
+
+remove_shell_rc() {
+  head_ "Shell rc files (ROS source lines)"
+  local files=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile")
+  local file hits total=0
+  for file in "${files[@]}"; do
+    [[ -f "$file" ]] || continue
+    hits="$(grep -nE "$RC_PATTERN" "$file" 2>/dev/null || true)"
+    [[ -n "$hits" ]] || continue
+    printf '  %s%s%s\n' "$C_BOLD" "$file" "$C_RESET"
+    printf '%s\n' "$hits" | sed 's/^/    /'
+    local count; count="$(printf '%s\n' "$hits" | grep -c . || true)"
+    total=$((total + count))
+    if (( DRY_RUN )); then
+      printf '  %swould remove%s %d line(s) from %s (a .bak copy is kept)\n' \
+        "$C_YELLOW" "$C_RESET" "$count" "$file"
+      continue
+    fi
+    local backup="$file.nyra-uninstall-$(date +%Y%m%d-%H%M%S).bak"
+    cp -p "$file" "$backup" || { fail "cannot back up $file"; FAILED=$((FAILED+1)); continue; }
+    grep -vE "$RC_PATTERN" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    ok "$file: $count line(s) removed (backup: $(basename "$backup"))"
+    printf 'edited %s, backup %s\n' "$file" "$backup" >> "$LOG"
+  done
+  if (( total == 0 )); then skip "no ROS lines found in shell rc files"; fi
+}
+
+# ---------------------------------------------------------------- 5c. ros dirs
+
+remove_ros_dirs() {
+  head_ "ROS directories"
+  local dirs=("/opt/ros" "$HOME/.ros")
+  local d
+  for d in "${dirs[@]}"; do
+    if [[ ! -e "$d" ]]; then skip "$d (not present)"; continue; fi
+    local kb; kb="$(size_kb "$d")"
+    if (( DRY_RUN )); then
+      printf '  %swould remove%s %s (%s)\n' "$C_YELLOW" "$C_RESET" "$d" "$(human "$kb")"
+      continue
+    fi
+    if [[ -w "$(dirname "$d")" ]]; then
+      rm -rf -- "$d" && { ok "$d removed ($(human "$kb"))"; FREED_KB=$((FREED_KB + kb)); REMOVED=$((REMOVED+1)); }
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo rm -rf -- "$d" && { ok "$d removed ($(human "$kb"))"; FREED_KB=$((FREED_KB + kb)); REMOVED=$((REMOVED+1)); } \
+        || { fail "could not remove $d"; FAILED=$((FAILED+1)); }
+    else
+      fail "no write access to $d and no sudo"; FAILED=$((FAILED+1))
+    fi
+  done
+  if [[ -d "$HOME/ros2_ws" ]]; then
+    warn "~/ros2_ws exists (a workspace you built) — remove it yourself: rm -rf ~/ros2_ws"
+  fi
+  rmdir "$HOME/.venvs" 2>/dev/null && ok "removed empty ~/.venvs" || true
 }
 
 # ---------------------------------------------------------------- 6. the checkout
@@ -404,6 +468,8 @@ fi
 (( DO_NPM ))      && remove_npm
 (( DO_UV_CACHE )) && remove_uv_cache
 (( DO_APT ))      && remove_apt
+(( DO_SHELL_RC )) && remove_shell_rc
+(( DO_ROS_DIRS )) && remove_ros_dirs
 (( DO_REPO ))     && remove_repo
 
 head_ "Summary"
@@ -415,6 +481,9 @@ else
   (( FAILED )) && say "  ${C_RED}failed: $FAILED${C_RESET} (see $LOG)"
 fi
 say "  left untouched: git config, python/node/uv binaries, other projects, ~/.local/bin"
+if (( DRY_RUN )) || (( !DO_SHELL_RC )); then
+  say "  may remain: ROS source lines in ~/.bashrc / ~/.zshrc (--shell-rc), /opt/ros and ~/.ros (--ros-dirs)"
+fi
 say "  log: $LOG"
 say ""
 say "  to reinstall later: git clone --recursive https://github.com/DanijelTech/Nyra.git && cd Nyra && npm run build"

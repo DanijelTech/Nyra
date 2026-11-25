@@ -586,8 +586,17 @@ Practical consequences:
 `--apt` alone removes only the three metapackages; the ~300 `ros-jazzy-*`
 dependencies stay. `--apt-ros-all` removes every installed `ros-jazzy-*` package
 and `--apt-autoremove` purges the orphaned dependencies (both are shown, with
-counts and sizes, before anything happens). Leftover dirs are yours:
-`/opt/ros`, `~/.ros`, any `ros2_ws` you built.
+counts and sizes, before anything happens).
+
+Two more flags finish the job without manual edits:
+
+* `--shell-rc` — drops the `source /opt/ros/...` (and workspace) lines from
+  `~/.bashrc` / `~/.zshrc` / `~/.profile`, keeping a timestamped `.bak` copy. It
+  deliberately leaves harmless leftovers like `export ROS_DOMAIN_ID=…` alone;
+* `--ros-dirs` — removes `/opt/ros` and `~/.ros` (sudo only if needed) and drops
+  the now-empty `~/.venvs`.
+
+A `~/ros2_ws` you built yourself is reported, not deleted.
 
 It is deliberately conservative:
 
