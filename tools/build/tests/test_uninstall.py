@@ -107,6 +107,31 @@ def test_all_removes_the_checkout_and_the_cache(tmp_path):
     assert after - before == set(), f"leftover script copies: {after - before}"
 
 
+def test_symlinked_uv_cache_is_removed_with_its_target(tmp_path):
+    """~/.cache is often a symlink to another disk; the space must actually be freed."""
+    root, home = fake_checkout(tmp_path)
+    target = tmp_path / "cache-on-another-disk" / "uv"
+    target.mkdir(parents=True)
+    (target / "blob").write_text("x", encoding="utf-8")
+    shutil.rmtree(home / ".cache")
+    (home / ".cache").symlink_to(tmp_path / "cache-on-another-disk")
+
+    result = run(root, home, "--yes", "--uv-cache")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not target.exists(), "the symlink target (the actual data) must be removed"
+    assert not (home / ".cache/uv").exists()
+
+
+def test_symlinked_home_paths_are_still_allowed(tmp_path):
+    """A repo reached through a symlink must not be refused either."""
+    root, home = fake_checkout(tmp_path)
+    link = tmp_path / "link-to-repo"
+    link.symlink_to(root)
+    result = run(link, home, "--yes", "--build")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (root / "06_assets/build").exists()
+
+
 def test_refuses_dangerous_paths(tmp_path):
     root, home = fake_checkout(tmp_path)
     for target in ("/", str(home), str(tmp_path)):

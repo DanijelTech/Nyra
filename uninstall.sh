@@ -121,21 +121,32 @@ size_kb() { # path -> KB (0 if missing)
 }
 
 # Whitelist: only these roots may be deleted. Anything else is refused.
+# Both the path as given and its resolved form are checked: ~/.cache or
+# ~/.venvs may be symlinks (to another disk, for example), and resolving them
+# first must not turn a whitelisted path into a refused one.
+ALLOW_UV_TARGET="${ALLOW_UV_TARGET:-}"
 allowed() {
   local p="$1"
+  local abs="$p"
+  [[ "$abs" == /* ]] || abs="$PWD/$abs"
   local resolved
-  resolved="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
+  resolved="$(readlink -f "$p" 2>/dev/null || printf '%s' "$abs")"
   local repo_resolved
   repo_resolved="$(readlink -f "$REPO" 2>/dev/null || printf '%s' "$REPO")"
-  [[ -n "$resolved" ]] || return 1
-  [[ "$resolved" == "/" ]] && return 1
-  [[ "$resolved" == "$HOME" ]] && return 1
-  case "$resolved" in
-    "$repo_resolved"|"$repo_resolved"/*) return 0 ;;
-    "$HOME/.venvs/nyra"|"$HOME/.venvs/nyra"/*) return 0 ;;
-    "$HOME/.cache/uv"|"$HOME/.cache/uv"/*) return 0 ;;
-    "${NPM_GLOBAL_PREFIX:-/nonexistent}"/*) return 0 ;;
-  esac
+  local candidate
+  for candidate in "$abs" "$resolved"; do
+    [[ -n "$candidate" ]] || continue
+    [[ "$candidate" == "/" ]] && continue
+    [[ "$candidate" == "$HOME" ]] && continue
+    case "$candidate" in
+      "$repo_resolved"|"$repo_resolved"/*) return 0 ;;
+      "$HOME/.venvs/nyra"|"$HOME/.venvs/nyra"/*) return 0 ;;
+      "$HOME/.cache/uv"|"$HOME/.cache/uv"/*) return 0 ;;
+      "${ALLOW_UV_TARGET:-/nonexistent}"|"${ALLOW_UV_TARGET:-/nonexistent}"/*) return 0 ;;
+      "${NPM_GLOBAL_PREFIX:-/nonexistent}"/*) return 0 ;;
+    esac
+  done
+  printf '  %sdetail%s %s (resolved: %s)\n' "$C_DIM" "$C_RESET" "$abs" "$resolved" >&2
   return 1
 }
 
@@ -237,9 +248,17 @@ remove_npm() {
 remove_uv_cache() {
   head_ "uv cache"
   local cache="${UV_CACHE_DIR:-$HOME/.cache/uv}"
-  if [[ ! -d "$cache" ]]; then skip "$cache (not present)"; return; fi
+  if [[ ! -e "$cache" ]]; then skip "$cache (not present)"; return; fi
   warn "this cache is shared with every other uv project on this machine"
-  remove "$cache" "$cache"
+  if [[ -L "$cache" ]]; then
+    # rm -rf on a symlink removes only the link; the data (and the space) stays.
+    ALLOW_UV_TARGET="$(readlink -f "$cache")"
+    warn "$cache is a symlink to $ALLOW_UV_TARGET — removing the target too"
+    remove "$ALLOW_UV_TARGET" "$ALLOW_UV_TARGET (uv cache target)"
+    remove "$cache" "$cache (symlink)"
+  else
+    remove "$cache" "$cache"
+  fi
 }
 
 # ---------------------------------------------------------------- 5. apt
