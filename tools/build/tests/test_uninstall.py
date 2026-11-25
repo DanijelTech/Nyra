@@ -132,6 +132,70 @@ def test_symlinked_home_paths_are_still_allowed(tmp_path):
     assert not (root / "06_assets/build").exists()
 
 
+def _stub_apt(tmp_path: Path) -> Path:
+    """A fake dpkg/apt-get so the package-selection logic can be tested for real."""
+    bin_dir = tmp_path / "stubbin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "dpkg-query").write_text(
+        "#!/bin/sh\n"
+        "case \"$*\" in\n"
+        "  *Status-Abbrev*)\n"
+        "    printf 'ii \\tros-jazzy-rclcpp\\nii \\tros-jazzy-urdf\\nii \\tros-jazzy-ros-base\\n' ;;\n"
+        "  *Installed-Size*)\n"
+        "    printf '20000\\n20000\\n20000\\n' ;;\n"
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "dpkg").write_text(
+        "#!/bin/sh\n"
+        "case \"$2\" in ros-jazzy-ros-base|ros-jazzy-joy|python3-colcon-common-extensions) exit 0 ;; esac\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    (bin_dir / "apt-get").write_text(
+        "#!/bin/sh\n"
+        "echo 'Remv ros-jazzy-rclcpp [1.0]'\n"
+        "echo 'Remv ros-jazzy-urdf [1.0]'\n"
+        "echo 'After this operation, 4096 MB disk space will be freed.'\n",
+        encoding="utf-8",
+    )
+    for name in ("dpkg-query", "dpkg", "apt-get"):
+        (bin_dir / name).chmod(0o755)
+    return bin_dir
+
+
+def test_apt_lists_all_ros_packages_and_the_autoremove_preview(tmp_path):
+    root, home = fake_checkout(tmp_path)
+    stub = _stub_apt(tmp_path)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{stub}:/usr/bin:/bin"}
+    result = subprocess.run(
+        ["bash", str(root / "uninstall.sh"), "--apt", "--apt-ros-all", "--apt-autoremove"],
+        capture_output=True, text=True, timeout=120, env=env, cwd=str(root),
+    )
+    out = result.stdout
+    assert result.returncode == 0, out + result.stderr
+    assert "ALL 3 installed ros-jazzy-* packages" in out
+    assert "58.6 MB" in out, out            # 60000 KB
+    assert "autoremove" in out
+    assert "4096 MB" in out
+    # still a dry run: nothing was executed
+    assert "EXECUTING" not in out
+
+
+def test_apt_without_ros_all_points_at_the_flag(tmp_path):
+    root, home = fake_checkout(tmp_path)
+    stub = _stub_apt(tmp_path)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{stub}:/usr/bin:/bin"}
+    result = subprocess.run(
+        ["bash", str(root / "uninstall.sh"), "--apt"],
+        capture_output=True, text=True, timeout=120, env=env, cwd=str(root),
+    )
+    assert result.returncode == 0
+    assert "3 ros-jazzy-* package(s) remain" in result.stdout
+    assert "--apt-ros-all" in result.stdout
+
+
 def test_refuses_dangerous_paths(tmp_path):
     root, home = fake_checkout(tmp_path)
     for target in ("/", str(home), str(tmp_path)):

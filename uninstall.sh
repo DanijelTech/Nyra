@@ -47,6 +47,7 @@ trap '[[ -n "${NYRA_UNINSTALL_COPY:-}" ]] && rm -f "$NYRA_UNINSTALL_COPY"' EXIT
 
 ASSUME_YES=0
 DRY_RUN=1
+APT_ROS_ALL=0 APT_AUTOREMOVE=0
 DO_BUILD=0 DO_ENVS=0 DO_NPM=0 DO_UV_CACHE=0 DO_APT=0 DO_REPO=0 KEEP_REPO=0
 APT_GENERIC=0
 REPO="$REPO_DEFAULT"
@@ -64,6 +65,8 @@ while (($#)); do
     --uv-cache) DO_UV_CACHE=1; shift ;;
     --apt) DO_APT=1; shift ;;
     --apt-generic) DO_APT=1; APT_GENERIC=1; shift ;;
+    --apt-ros-all) DO_APT=1; APT_ROS_ALL=1; shift ;;
+    --apt-autoremove) DO_APT=1; APT_AUTOREMOVE=1; shift ;;
     --repo) DO_REPO=1; shift ;;
     --keep-repo) KEEP_REPO=1; shift ;;
     --all) DO_BUILD=1; DO_ENVS=1; DO_NPM=1; DO_UV_CACHE=1; DO_REPO=1; shift ;;
@@ -266,42 +269,103 @@ remove_uv_cache() {
 APT_ROS=(ros-jazzy-ros-base ros-jazzy-joy python3-colcon-common-extensions)
 APT_GENERIC_PKGS=(ccache libfmt-dev libspdlog-dev libeigen3-dev screen zlib1g-dev git-lfs)
 
+# Every installed ROS 2 Jazzy package (the three above are metapackages; the real
+# bulk is the ~300 dependencies they pull in).
+apt_installed_ros() {
+  dpkg-query -W -f='${db:Status-Abbrev}\t${Package}\n' 'ros-jazzy-*' 2>/dev/null \
+    | awk '$1 ~ /^ii/ {print $2}'
+}
+
+apt_size_kb() { # package names on stdin -> total installed KB
+  local names
+  names="$(cat)"
+  [[ -n "$names" ]] || { echo 0; return; }
+  # shellcheck disable=SC2086
+  dpkg-query -W -f='${Installed-Size}\n' $names 2>/dev/null | awk '{s+=$1} END {printf "%d", s+0}'
+}
+
 remove_apt() {
   head_ "System packages (apt)"
   if ! command -v dpkg >/dev/null 2>&1; then skip "not a dpkg system"; return; fi
+
   local pkgs=("${APT_ROS[@]}")
   (( APT_GENERIC )) && pkgs+=("${APT_GENERIC_PKGS[@]}")
-  local installed=()
-  local p
+
+  local ros_installed ros_kb
+  ros_installed="$(apt_installed_ros)"
+  ros_kb="$(printf '%s\n' "$ros_installed" | apt_size_kb)"
+
+  local installed=() p
   for p in "${pkgs[@]}"; do
-    if dpkg -s "$p" >/dev/null 2>&1; then installed+=("$p"); fi
+    dpkg -s "$p" >/dev/null 2>&1 && installed+=("$p")
   done
-  if ((${#installed[@]} == 0)); then skip "no project packages installed"; else
-    printf '  %swould remove%s %s\n' "$C_YELLOW" "$C_RESET" "${installed[*]}"
+
+  if (( APT_ROS_ALL )); then
+    local n; n="$(printf '%s\n' "$ros_installed" | grep -c . || true)"
+    if (( n )); then
+      printf '  %swould remove%s ALL %d installed ros-jazzy-* packages (%s)\n' \
+        "$C_YELLOW" "$C_RESET" "$n" "$(human "$ros_kb")"
+      warn "this removes ROS 2 entirely, including anything else on this machine that uses it"
+      if (( !DRY_RUN )); then
+        local apt_cmd=(apt-get remove -y)
+        if (( EUID == 0 )); then "${apt_cmd[@]}" $ros_installed >>"$LOG" 2>&1 && ok "ROS 2 packages removed"
+        elif command -v sudo >/dev/null 2>&1; then sudo "${apt_cmd[@]}" $ros_installed >>"$LOG" 2>&1 && ok "ROS 2 packages removed"
+        else fail "no root/sudo — run manually: sudo apt-get remove $ros_installed"; FAILED=$((FAILED+1)); fi
+      fi
+    else
+      skip "no ros-jazzy-* packages installed"
+    fi
+  else
+    if ((${#installed[@]})); then
+      printf '  %swould remove%s %s\n' "$C_YELLOW" "$C_RESET" "${installed[*]}"
+    else
+      skip "the named ROS packages are not installed"
+    fi
+    local remaining; remaining="$(printf '%s\n' "$ros_installed" | grep -c . || true)"
+    if (( remaining )); then
+      printf '  %snote%s %d ros-jazzy-* package(s) remain (%s) — add %s--apt-ros-all%s to remove ROS 2 completely\n' \
+        "$C_YELLOW" "$C_RESET" "$remaining" "$(human "$ros_kb")" "$C_BOLD" "$C_RESET"
+    fi
+    if (( !DRY_RUN && ${#installed[@]} )); then
+      local apt_cmd=(apt-get remove -y "${installed[@]}")
+      if (( EUID == 0 )); then "${apt_cmd[@]}" >>"$LOG" 2>&1 && ok "named packages removed"
+      elif command -v sudo >/dev/null 2>&1; then sudo "${apt_cmd[@]}" >>"$LOG" 2>&1 && ok "named packages removed"
+      else fail "no root/sudo — run manually: sudo apt-get remove ${installed[*]}"; FAILED=$((FAILED+1)); fi
+    fi
   fi
+
   local files=(/etc/apt/sources.list.d/ros2.list /usr/share/keyrings/ros-archive-keyring.gpg)
   local f
   for f in "${files[@]}"; do
-    [[ -e "$f" ]] && printf '  %swould remove%s %s (ROS apt source)\n' "$C_YELLOW" "$C_RESET" "$f"
-  done
-  if (( DRY_RUN )); then return; fi
-  if ((${#installed[@]})); then
-    if (( EUID == 0 )); then
-      apt-get remove -y "${installed[@]}" >>"$LOG" 2>&1 && ok "apt packages removed" || { fail "apt remove failed (see $LOG)"; FAILED=$((FAILED+1)); }
-    elif command -v sudo >/dev/null 2>&1; then
-      sudo apt-get remove -y "${installed[@]}" >>"$LOG" 2>&1 && ok "apt packages removed" || { fail "apt remove failed (see $LOG)"; FAILED=$((FAILED+1)); }
+    [[ -e "$f" ]] || continue
+    if (( DRY_RUN )); then
+      printf '  %swould remove%s %s (ROS apt source)\n' "$C_YELLOW" "$C_RESET" "$f"
     else
-      fail "no root/sudo — run manually: sudo apt remove ${installed[*]}"
-      FAILED=$((FAILED+1))
-    fi
-  fi
-  for f in "${files[@]}"; do
-    if [[ -e "$f" ]]; then
       if (( EUID == 0 )); then rm -f -- "$f"; else sudo rm -f -- "$f"; fi
       ok "removed $f"
     fi
   done
-  warn "not running 'apt autoremove' — review leftover dependencies yourself if you want them gone"
+
+  # Leftover auto-installed dependencies (the bulk of the space).
+  if command -v apt-get >/dev/null 2>&1; then
+    local preview
+    preview="$(apt-get -s autoremove 2>/dev/null | awk '/^Remv /{n++} /freed/{print} END{if (n) printf "%d package(s) would be removed\n", n}' | tail -2)"
+    if [[ -n "$preview" ]]; then
+      if (( APT_AUTOREMOVE )); then
+        if (( DRY_RUN )); then
+          printf '  %swould run%s apt-get autoremove --purge: %s\n' "$C_YELLOW" "$C_RESET" "$(echo "$preview" | tr '\n' ' ')"
+        else
+          if (( EUID == 0 )); then apt-get autoremove -y --purge >>"$LOG" 2>&1
+          else sudo apt-get autoremove -y --purge >>"$LOG" 2>&1; fi \
+            && ok "orphaned dependencies removed" || { fail "autoremove failed (see $LOG)"; FAILED=$((FAILED+1)); }
+        fi
+      else
+        printf '  %snote%s %s — add %s--apt-autoremove%s to purge them\n' \
+          "$C_YELLOW" "$C_RESET" "$(echo "$preview" | tr '\n' ' ')" "$C_BOLD" "$C_RESET"
+      fi
+    fi
+  fi
+  say "  leftover config dirs are yours to delete: /opt/ros, ~/.ros, any ros2_ws you built"
 }
 
 # ---------------------------------------------------------------- 6. the checkout
