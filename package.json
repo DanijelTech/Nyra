@@ -1,6 +1,6 @@
 {
   "name": "nyra-workspace",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Build the Nyra humanoid workspace (ROBOTO ORIGIN / RPO): submodules, roboparty_deploy (colcon), uv environments, compatibility contract and the EvoLayer test suite \u2014 one command, one manifest.",
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
@@ -19,7 +19,8 @@
     "tools/build/nyra_build.py",
     "tools/build/README.md",
     "tools/build/tests/",
-    "package.json"
+    "package.json",
+    "uninstall.sh"
   ],
   "scripts": {
     "build": "node tools/build/cli.js build",
@@ -33,7 +34,9 @@
     "clean": "node tools/build/cli.js clean",
     "clean:all": "node tools/build/cli.js clean --venvs",
     "test": "node tools/build/cli.js test",
-    "prepack": "node -e \"const fs=require('fs');for (const p of ['tools/build/tests/__pycache__','.pytest_cache','tools/build/.pytest_cache']) fs.rmSync(p,{recursive:true,force:true});\""
+    "prepack": "node -e \"const fs=require('fs');for (const p of ['tools/build/tests/__pycache__','.pytest_cache','tools/build/.pytest_cache']) fs.rmSync(p,{recursive:true,force:true});\"",
+    "purge": "bash uninstall.sh",
+    "purge:yes": "bash uninstall.sh --yes"
   },
   "keywords": [
     "robotics",

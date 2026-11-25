@@ -68,6 +68,7 @@ message. A build that fills the disk is an incident, not a build.
 | `doctor` | toolchain, capabilities, module state, EvoLayer self-check (`--json`) |
 | `status` | the last manifest (`--json`) |
 | `clean` | remove build outputs; `--venvs` also removes the multi-GB environments |
+| `npm run purge` | run `uninstall.sh` (dry run): the full "remove everything this project installed" plan |
 
 Useful flags:
 

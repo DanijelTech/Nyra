@@ -573,6 +573,29 @@ Practical consequences:
 
 ---
 
+## 11b. Uninstalling (freeing the disk)
+
+```bash
+./uninstall.sh                      # DRY RUN: prints what it would delete, with sizes
+./uninstall.sh --yes --all          # checkout + build outputs + python envs + npm + uv cache
+./uninstall.sh --yes --envs --build # keep the code, remove the ~15 GB of environments
+./uninstall.sh --yes --all --apt    # also remove the ROS 2 packages we told you to install
+```
+
+It is deliberately conservative:
+
+* **dry run by default**; nothing is deleted without `--yes`;
+* each category is opt-in (`--build`, `--envs`, `--npm`, `--uv-cache`, `--apt`, `--repo`);
+* only paths on a whitelist can be deleted — it refuses `/`, `$HOME` and any directory
+  without `.gitmodules`, and re-runs itself from a copy so deleting the checkout
+  cannot truncate the script;
+* `--apt` never runs `apt autoremove`, and generic packages (`ccache`, `screen`, …)
+  need `--apt-generic` as well;
+* it never touches your git config, the python/node/uv binaries, `~/.local/bin`, or
+  other projects; it writes a log of every removal.
+
+Tests (fake checkout + fake `HOME`, real deletions): `python3 -m pytest tools/build/tests/test_uninstall.py -q`.
+
 ## 12. Troubleshooting
 
 See `05_integration/docs/TROUBLESHOOTING.md`. Fast checks:
